@@ -1,7 +1,8 @@
 # Security
 
-This is a private academic MVP repository. Do not commit secrets, API keys, raw private videos,
-large generated media files, or local database files.
+This MVP processes local media files and may use external AI APIs in later milestones.
+Do not commit secrets, API keys, raw private videos, large generated media files, or local
+database files.
 
 ## Sensitive Data
 

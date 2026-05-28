@@ -11,13 +11,9 @@ def test_health_check() -> None:
     assert response.json()["status"] == "ok"
 
 
-def test_videos_router_is_registered() -> None:
+def test_openapi_schema_loads() -> None:
     with TestClient(app) as client:
-        response = client.get("/videos")
+        response = client.get("/openapi.json")
 
     assert response.status_code == 200
-    assert response.json() == {
-        "module": "videos",
-        "status": "ready",
-        "milestone": "M1 scaffold",
-    }
+    assert response.json()["info"]["title"] == "Multimodal Video Understanding Engine"
