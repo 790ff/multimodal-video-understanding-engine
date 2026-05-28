@@ -1,0 +1,29 @@
+name: Bug report
+description: Report a reproducible problem.
+title: "[Bug] "
+labels: ["type:bug"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce it?
+      placeholder: |
+        1. Start the API.
+        2. Upload this file type.
+        3. Call this endpoint.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true

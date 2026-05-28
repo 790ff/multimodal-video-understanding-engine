@@ -1,0 +1,16 @@
+.DS_Store
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+data/video_ai.sqlite3
+data/uploads/*
+data/audio/*
+data/frames/*
+!data/uploads/.gitkeep
+!data/audio/.gitkeep
+!data/frames/.gitkeep
