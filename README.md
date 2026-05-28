@@ -51,11 +51,11 @@ pytest
 
 ## Development Workflow
 
-This repository uses a protected default branch named `main`.
+This repository uses a pull-request workflow for changes to `main`.
 
 - Work on feature branches.
 - Open a pull request for every change.
-- CI must pass before merge.
+- Run local checks before opening or merging a pull request.
 - Runtime media, local databases, and secrets must stay out of Git.
 
 Install development tools with:

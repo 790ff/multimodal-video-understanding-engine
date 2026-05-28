@@ -14,12 +14,6 @@ class HealthResponse(BaseModel):
     environment: str
 
 
-class VideosModuleResponse(BaseModel):
-    module: str
-    status: str
-    milestone: str
-
-
 class ErrorDetail(BaseModel):
     code: str
     message: str
