@@ -27,6 +27,12 @@ class ValidationAppError(AppError):
     message = "Request validation failed."
 
 
+class FileTooLargeAppError(AppError):
+    status_code = 413
+    code = "file_too_large"
+    message = "Uploaded file is too large."
+
+
 class NotFoundAppError(AppError):
     status_code = 404
     code = "not_found"
@@ -43,3 +49,9 @@ class ProcessingAppError(AppError):
     status_code = 500
     code = "processing_error"
     message = "Video processing failed."
+
+
+class StorageAppError(AppError):
+    status_code = 500
+    code = "storage_error"
+    message = "Video storage failed."
