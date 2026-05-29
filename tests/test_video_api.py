@@ -157,7 +157,7 @@ def _analyze_video_with_fakes(client: TestClient) -> str:
 
     upload_response = client.post(
         "/videos/upload",
-        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "video/mp4")},
     )
     video_id = upload_response.json()["video_id"]
     analyze_response = client.post(f"/videos/{video_id}/analyze")
@@ -171,17 +171,17 @@ def test_upload_video_creates_metadata_and_stores_original_file(
 ) -> None:
     response = client.post(
         "/videos/upload",
-        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "video/mp4")},
     )
 
     assert response.status_code == 200
     body = response.json()
-    assert body["filename"] == "demo.mp4"
+    assert body["filename"] == "sample.mp4"
     assert body["status"] == "uploaded"
     assert body["video_id"]
 
     stored_file = tmp_path / "uploads" / body["video_id"] / "original.mp4"
-    assert stored_file.read_bytes() == b"fake mp4 bytes"
+    assert stored_file.read_bytes() == b"fake sample mp4 bytes"
 
     db_path = tmp_path / "test_video_ai.sqlite3"
     with sqlite3.connect(db_path) as connection:
@@ -191,7 +191,7 @@ def test_upload_video_creates_metadata_and_stores_original_file(
 
     assert row == (
         body["video_id"],
-        "demo.mp4",
+        "sample.mp4",
         str(stored_file),
         "uploaded",
         None,
@@ -201,7 +201,7 @@ def test_upload_video_creates_metadata_and_stores_original_file(
 def test_upload_video_accepts_mov(client: TestClient, tmp_path: Path) -> None:
     response = client.post(
         "/videos/upload",
-        files={"file": ("clip.MOV", b"fake mov bytes", "video/quicktime")},
+        files={"file": ("clip.MOV", b"fake sample mov bytes", "video/quicktime")},
     )
 
     assert response.status_code == 200
@@ -214,7 +214,7 @@ def test_upload_video_accepts_mov(client: TestClient, tmp_path: Path) -> None:
 def test_upload_video_rejects_unsupported_extension(client: TestClient) -> None:
     response = client.post(
         "/videos/upload",
-        files={"file": ("demo.avi", b"fake avi bytes", "video/x-msvideo")},
+        files={"file": ("sample.avi", b"fake sample avi bytes", "video/x-msvideo")},
     )
 
     assert response.status_code == 400
@@ -233,7 +233,7 @@ def test_upload_video_rejects_unsupported_extension(client: TestClient) -> None:
 def test_get_video_status_returns_current_status(client: TestClient) -> None:
     upload_response = client.post(
         "/videos/upload",
-        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "video/mp4")},
     )
     video_id = upload_response.json()["video_id"]
 
@@ -276,7 +276,7 @@ def test_get_video_timeline_returns_404_for_missing_video(client: TestClient) ->
 def test_get_video_timeline_returns_409_before_analysis(client: TestClient) -> None:
     upload_response = client.post(
         "/videos/upload",
-        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "video/mp4")},
     )
     video_id = upload_response.json()["video_id"]
 
@@ -309,7 +309,7 @@ def test_analyze_video_runs_preprocessing_and_persists_metadata(
 
     upload_response = client.post(
         "/videos/upload",
-        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "video/mp4")},
     )
     video_id = upload_response.json()["video_id"]
 
@@ -420,7 +420,7 @@ def test_get_video_timeline_returns_ordered_events_with_evidence(
 
     upload_response = client.post(
         "/videos/upload",
-        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "video/mp4")},
     )
     video_id = upload_response.json()["video_id"]
     analyze_response = client.post(f"/videos/{video_id}/analyze")
@@ -514,7 +514,7 @@ def test_ask_video_returns_409_before_analysis(client: TestClient) -> None:
     )
     upload_response = client.post(
         "/videos/upload",
-        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "video/mp4")},
     )
     video_id = upload_response.json()["video_id"]
 
@@ -536,7 +536,7 @@ def test_ask_video_returns_409_before_analysis(client: TestClient) -> None:
 def test_ask_video_rejects_empty_question(client: TestClient) -> None:
     upload_response = client.post(
         "/videos/upload",
-        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "video/mp4")},
     )
     video_id = upload_response.json()["video_id"]
 
@@ -561,7 +561,7 @@ def test_ask_video_returns_safe_answer_for_insufficient_evidence(
     )
     upload_response = client.post(
         "/videos/upload",
-        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "video/mp4")},
     )
     video_id = upload_response.json()["video_id"]
     with sqlite3.connect(tmp_path / "test_video_ai.sqlite3") as connection:
@@ -625,7 +625,7 @@ def test_analyze_video_keeps_untimed_transcript_in_timeline(
 
     upload_response = client.post(
         "/videos/upload",
-        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "video/mp4")},
     )
     video_id = upload_response.json()["video_id"]
     analyze_response = client.post(f"/videos/{video_id}/analyze")
@@ -658,7 +658,7 @@ def test_analyze_video_uses_fallback_scenes_when_scene_detection_fails(
 
     upload_response = client.post(
         "/videos/upload",
-        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "video/mp4")},
     )
     video_id = upload_response.json()["video_id"]
 
@@ -704,7 +704,7 @@ def test_analyze_video_reuses_existing_preprocessing_outputs(
 
     upload_response = client.post(
         "/videos/upload",
-        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "video/mp4")},
     )
     video_id = upload_response.json()["video_id"]
 
@@ -766,7 +766,7 @@ def test_analyze_video_returns_409_when_already_processing(
 ) -> None:
     upload_response = client.post(
         "/videos/upload",
-        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "video/mp4")},
     )
     video_id = upload_response.json()["video_id"]
 
@@ -803,7 +803,7 @@ def test_analyze_video_failure_marks_video_failed_with_safe_message(
 
     upload_response = client.post(
         "/videos/upload",
-        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "video/mp4")},
     )
     video_id = upload_response.json()["video_id"]
 

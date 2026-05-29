@@ -110,7 +110,7 @@ Example ask request:
 
 ## Known Limitations
 
-- No React or custom web UI is included yet; Swagger UI is the MVP interface.
+- No React or custom web UI is included yet; Swagger UI is the local product interface for the backend.
 - No authentication, user accounts, roles, or multi-tenant isolation.
 - No background queue; analysis runs synchronously in the request process.
 - No ranking, embeddings, vector search, or deep mode. `/ask` uses stored evidence only.

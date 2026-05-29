@@ -53,7 +53,7 @@ Priority is marked as High, Medium, or Low. High priority requirements are requi
 
 ### 1.3 Intended Audience and Reading Suggestions
 
-This document is intended for the project owner, academic supervisor, developers, testers, and future maintainers. Readers should start with the Product Scope and Overall Description to understand the product vision, then review System Features for functional behavior, Software Architecture and Software Design for implementation structure, and Testing Strategy for verification expectations.
+This document is intended for the product owner, developers, QA testers, operators, and future maintainers. Readers should start with the Product Scope and Overall Description to understand the product vision, then review System Features for functional behavior, Software Architecture and Software Design for implementation structure, and Testing Strategy for verification expectations.
 
 ### 1.4 Product Scope
 
@@ -122,9 +122,9 @@ The product must provide the following major functions:
 
 | User Class | Description | Main Needs |
 |---|---|---|
-| Primary User | A student, evaluator, or end user who uploads a video and asks questions about it. | Simple upload, clear timeline, accurate answers with timestamps. |
+| Primary User | A product user who uploads a video and asks questions about it. | Simple upload, clear timeline, accurate answers with timestamps. |
 | Developer | The engineer implementing and maintaining the backend pipeline. | Modular code, clear API contracts, testable processing steps. |
-| Tester or Evaluator | A reviewer verifying the system behavior for project grading or QA. | Repeatable test videos, visible outputs, clear success criteria. |
+| QA Tester | A tester verifying product behavior before release. | Repeatable test videos, visible outputs, clear success criteria. |
 | Future Admin | A future role that may manage uploaded videos, storage, and system settings. | Access control, cleanup tools, monitoring. Not required for MVP. |
 
 ### 2.4 Operating Environment
@@ -385,7 +385,7 @@ The system shall store metadata and analysis results so the same video does not 
 - BR-2: A user cannot ask questions about a video until analysis has completed successfully.
 - BR-3: Answers should cite timestamps or frame references whenever evidence exists.
 - BR-4: The system should not reprocess a video from scratch for every question.
-- BR-5: Authentication and user accounts are out of scope for the first MVP unless required by the course evaluator.
+- BR-5: Authentication and user accounts are out of scope for the first MVP unless required by product delivery criteria.
 
 ## 6. Other Requirements
 
@@ -523,7 +523,7 @@ Testing rules:
 | Decision | Rationale | Consequence |
 |---|---|---|
 | Modular monolith | Fast MVP with clean internal boundaries | Easier development now, still extensible later |
-| SQLite first | Simple local setup and demo | PostgreSQL migration can be added later |
+| SQLite first | Simple local product setup | PostgreSQL migration can be added later |
 | SQLAlchemy repository access | Keeps database code isolated and migration-friendly | Slight setup overhead, better maintainability |
 | Alembic before release | Makes schema changes traceable | Can be introduced after the first tables are stable |
 | Local files for media | Avoid storing large blobs in the database | Requires cleanup policy later |
@@ -781,7 +781,7 @@ Response:
 ```json
 {
   "video_id": "uuid",
-  "filename": "demo.mp4",
+  "filename": "sample.mp4",
   "status": "uploaded"
 }
 ```
@@ -1015,7 +1015,7 @@ Integration tests should cover:
 
 ### 11.3 Manual Acceptance Test
 
-The backend MVP is acceptable when a reviewer can complete the following workflow
+The backend MVP is acceptable when a product owner, developer, or QA tester can complete the following workflow
 with a short `.mp4` or `.mov` video through Swagger UI:
 
 - Start the API server with `uvicorn app.main:app --reload`.
@@ -1031,7 +1031,7 @@ with a short `.mp4` or `.mov` video through Swagger UI:
 - Repeat the ask request and confirm the video remains analyzed without requiring upload or preprocessing to run again.
 
 Manual acceptance requires a configured provider key and FFmpeg installed locally.
-If the workflow fails, the reviewer should use the troubleshooting guidance in
+If the workflow fails, use the troubleshooting guidance in
 Section 12.5 before treating the release as blocked.
 
 ### 11.4 M7 Automated Verification
@@ -1107,7 +1107,7 @@ Before the first GitHub release, the repository should include:
 
 The M7 backend MVP has the following known limitations:
 
-- No custom web UI is included. Swagger UI is the reviewer-facing interface for the MVP.
+- No custom web UI is included. Swagger UI is the local product interface for the backend MVP.
 - No authentication, authorization, user accounts, or multi-tenant data isolation.
 - No background queue. Analysis runs synchronously in the API process.
 - No ranking, embeddings, vector search, or deep retrieval mode. Question answering uses stored evidence only.
@@ -1184,7 +1184,7 @@ This appendix contains the analysis models used to connect requirements, archite
 
 ### B.2 Use Case Diagram
 
-The use case diagram identifies the main system functions visible to the primary user and evaluator.
+The use case diagram identifies the main system functions visible to the primary product user and QA tester.
 
 ![Use Case Diagram](diagrams/use_case_diagram.png)
 
@@ -1192,11 +1192,11 @@ The use case diagram identifies the main system functions visible to the primary
 
 | Use Case | Actor | Description | Related Requirements |
 |---|---|---|---|
-| Upload Video | Primary User, Evaluator | User uploads an mp4 or mov video file. | FR-1 to FR-6 |
-| Analyze Video | Primary User, Evaluator | System extracts audio, transcript, keyframes, scenes, frame summaries, and timeline. | FR-7 to FR-21 |
-| View Timeline | Primary User, Evaluator | User retrieves timestamped timeline events. | FR-18 to FR-20, FR-34 |
-| Ask Question About Video | Primary User, Evaluator | User asks natural-language questions about a processed video. | FR-22 to FR-28 |
-| View Timestamped Evidence | Primary User, Evaluator | System returns timestamps, frames, and timeline evidence with answers. | FR-20, FR-25 |
+| Upload Video | Primary User, QA Tester | User uploads an mp4 or mov video file. | FR-1 to FR-6 |
+| Analyze Video | Primary User, QA Tester | System extracts audio, transcript, keyframes, scenes, frame summaries, and timeline. | FR-7 to FR-21 |
+| View Timeline | Primary User, QA Tester | User retrieves timestamped timeline events. | FR-18 to FR-20, FR-34 |
+| Ask Question About Video | Primary User, QA Tester | User asks natural-language questions about a processed video. | FR-22 to FR-28 |
+| View Timestamped Evidence | Primary User, QA Tester | System returns timestamps, frames, and timeline evidence with answers. | FR-20, FR-25 |
 
 ### B.4 System Context Diagram
 
@@ -1303,5 +1303,5 @@ This swimlane diagram shows the API and integration flow across the user/client,
 | TBD-2 | Review whether the 250 MB local MVP upload limit should change for any future hosted deployment. |
 | TBD-3 | Confirm scope and timing for a future web frontend milestone after the backend MVP. |
 | TBD-4 | Confirm final database choice for the MVP: SQLite or PostgreSQL. |
-| TBD-5 | Confirm expected video duration and resolution limits for demonstration. |
-| TBD-6 | Confirm final project team/member details for the specification cover page if required by the course. |
+| TBD-5 | Confirm expected video duration and resolution limits for product validation. |
+| TBD-6 | Confirm final ownership and maintainer details for the specification cover page if required. |
