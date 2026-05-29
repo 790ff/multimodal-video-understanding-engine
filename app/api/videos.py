@@ -11,7 +11,13 @@ from app.database import get_db
 from app.domain.errors import AppError, NotFoundAppError, StorageAppError
 from app.domain.status import VideoStatus
 from app.repositories.video_repository import VideoRepository
-from app.schemas import ErrorResponse, VideoStatusResponse, VideoUploadResponse
+from app.schemas import (
+    AnalyzeVideoResponse,
+    ErrorResponse,
+    VideoStatusResponse,
+    VideoUploadResponse,
+)
+from app.services.video_processor import VideoProcessor
 from app.services.video_storage import VideoStorageService
 
 router = APIRouter(prefix="/videos", tags=["videos"])
@@ -21,9 +27,14 @@ def get_video_storage_service() -> VideoStorageService:
     return VideoStorageService()
 
 
+def get_video_processor() -> VideoProcessor:
+    return VideoProcessor()
+
+
 UploadVideoFile = Annotated[UploadFile, File(...)]
 DatabaseSession = Annotated[Session, Depends(get_db)]
 StorageService = Annotated[VideoStorageService, Depends(get_video_storage_service)]
+ProcessorService = Annotated[VideoProcessor, Depends(get_video_processor)]
 
 
 @router.post(
@@ -62,6 +73,33 @@ async def upload_video(
         video_id=video.id,
         filename=video.original_filename,
         status=VideoStatus(video.status),
+    )
+
+
+@router.post(
+    "/{video_id}/analyze",
+    response_model=AnalyzeVideoResponse,
+    responses={
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
+)
+def analyze_video(
+    video_id: str,
+    db: DatabaseSession,
+    processor: ProcessorService,
+) -> AnalyzeVideoResponse:
+    repository = VideoRepository(db)
+    result = processor.analyze(video_id=video_id, repository=repository)
+
+    return AnalyzeVideoResponse(
+        video_id=result.video_id,
+        status=result.status,
+        transcript_segments=result.transcript_segments,
+        keyframes=result.keyframes,
+        scenes=result.scenes,
+        timeline_events=result.timeline_events,
     )
 
 
