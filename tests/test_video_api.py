@@ -12,9 +12,14 @@ from app.adapters.frame_analyzer import FrameAnalysisResult
 from app.adapters.frame_extractor import ExtractedFrame
 from app.adapters.scene_detector import DetectedScene
 from app.adapters.transcriber import TranscriptSegmentData
-from app.api.videos import get_video_processor
+from app.api.videos import get_question_answerer, get_video_processor
 from app.config import get_settings
 from app.main import create_app
+from app.services.question_answerer import (
+    INSUFFICIENT_EVIDENCE_ANSWER,
+    QuestionAnswerer,
+    RetrievedEvidenceContext,
+)
 from app.services.video_processor import VideoProcessor
 
 
@@ -106,6 +111,23 @@ class FakeFrameAnalyzer:
         ]
 
 
+class FakeAnswerProvider:
+    def __init__(self, answer: str = "Answer from stored evidence.") -> None:
+        self.answer = answer
+        self.questions: list[str] = []
+        self.contexts: list[RetrievedEvidenceContext] = []
+
+    def generate(self, *, question: str, context: RetrievedEvidenceContext) -> str:
+        self.questions.append(question)
+        self.contexts.append(context)
+        return self.answer
+
+
+class FailingAnswerProvider:
+    def generate(self, *, question: str, context: RetrievedEvidenceContext) -> str:
+        raise AssertionError("Answer provider should not run without stored evidence.")
+
+
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'test_video_ai.sqlite3'}")
@@ -120,6 +142,27 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
 
     test_client.app.dependency_overrides.clear()
     get_settings.cache_clear()
+
+
+def _analyze_video_with_fakes(client: TestClient) -> str:
+    processor = VideoProcessor(
+        audio_extractor=FakeAudioExtractor(),
+        frame_extractor=FakeFrameExtractor(),
+        scene_detector=FakeSceneDetector(),
+        transcriber=FakeTranscriber(),
+        frame_analyzer=FakeFrameAnalyzer(),
+        settings=get_settings(),
+    )
+    client.app.dependency_overrides[get_video_processor] = lambda: processor
+
+    upload_response = client.post(
+        "/videos/upload",
+        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+    )
+    video_id = upload_response.json()["video_id"]
+    analyze_response = client.post(f"/videos/{video_id}/analyze")
+    assert analyze_response.status_code == 200
+    return video_id
 
 
 def test_upload_video_creates_metadata_and_stores_original_file(
@@ -423,6 +466,148 @@ def test_get_video_timeline_returns_ordered_events_with_evidence(
             },
         ],
     }
+
+
+def test_ask_video_success_uses_stored_evidence(client: TestClient) -> None:
+    answer_provider = FakeAnswerProvider("The intro is described by stored evidence.")
+    client.app.dependency_overrides[get_question_answerer] = lambda: QuestionAnswerer(
+        answer_provider=answer_provider,
+    )
+    video_id = _analyze_video_with_fakes(client)
+
+    response = client.post(
+        f"/videos/{video_id}/ask",
+        json={"question": "What happens at the start?"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["answer"] == "The intro is described by stored evidence."
+    assert answer_provider.questions == ["What happens at the start?"]
+    assert len(answer_provider.contexts) == 1
+    assert "Intro narration" in answer_provider.contexts[0].context_text
+    assert "Visual summary for frame_000001.jpg" in answer_provider.contexts[0].context_text
+
+
+def test_ask_video_returns_404_for_missing_video(client: TestClient) -> None:
+    client.app.dependency_overrides[get_question_answerer] = lambda: QuestionAnswerer(
+        answer_provider=FakeAnswerProvider(),
+    )
+
+    response = client.post(
+        "/videos/00000000-0000-0000-0000-000000000000/ask",
+        json={"question": "What happened?"},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "error": {
+            "code": "video_not_found",
+            "message": "Video was not found.",
+            "details": {},
+        }
+    }
+
+
+def test_ask_video_returns_409_before_analysis(client: TestClient) -> None:
+    client.app.dependency_overrides[get_question_answerer] = lambda: QuestionAnswerer(
+        answer_provider=FakeAnswerProvider(),
+    )
+    upload_response = client.post(
+        "/videos/upload",
+        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+    )
+    video_id = upload_response.json()["video_id"]
+
+    response = client.post(
+        f"/videos/{video_id}/ask",
+        json={"question": "What happened?"},
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "error": {
+            "code": "video_not_analyzed",
+            "message": "Video has not been analyzed.",
+            "details": {},
+        }
+    }
+
+
+def test_ask_video_rejects_empty_question(client: TestClient) -> None:
+    upload_response = client.post(
+        "/videos/upload",
+        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+    )
+    video_id = upload_response.json()["video_id"]
+
+    response = client.post(f"/videos/{video_id}/ask", json={"question": "   "})
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": {
+            "code": "empty_question",
+            "message": "Question must not be empty.",
+            "details": {},
+        }
+    }
+
+
+def test_ask_video_returns_safe_answer_for_insufficient_evidence(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    client.app.dependency_overrides[get_question_answerer] = lambda: QuestionAnswerer(
+        answer_provider=FailingAnswerProvider(),
+    )
+    upload_response = client.post(
+        "/videos/upload",
+        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+    )
+    video_id = upload_response.json()["video_id"]
+    with sqlite3.connect(tmp_path / "test_video_ai.sqlite3") as connection:
+        connection.execute(
+            "update videos set status = 'analyzed' where id = ?",
+            (video_id,),
+        )
+
+    response = client.post(
+        f"/videos/{video_id}/ask",
+        json={"question": "What happened?"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "answer": INSUFFICIENT_EVIDENCE_ANSWER,
+        "evidence": [],
+    }
+
+
+def test_ask_video_returns_timestamped_evidence_with_answer(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    client.app.dependency_overrides[get_question_answerer] = lambda: QuestionAnswerer(
+        answer_provider=FakeAnswerProvider("Stored timeline answer."),
+    )
+    video_id = _analyze_video_with_fakes(client)
+
+    response = client.post(
+        f"/videos/{video_id}/ask",
+        json={"question": "What evidence supports the answer?"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["answer"] == "Stored timeline answer."
+    assert {"type": "timeline_event", "start_time": 0.0, "end_time": 2.5} in body[
+        "evidence"
+    ]
+    assert {"type": "transcript", "start_time": 0.0, "end_time": 1.5} in body["evidence"]
+    assert {
+        "type": "frame",
+        "time": 0.0,
+        "path": str(tmp_path / "frames" / video_id / "frame_000001.jpg"),
+    } in body["evidence"]
 
 
 def test_analyze_video_keeps_untimed_transcript_in_timeline(

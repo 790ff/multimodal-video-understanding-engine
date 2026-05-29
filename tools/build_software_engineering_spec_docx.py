@@ -15,7 +15,7 @@ from docx.shared import Inches, Pt, RGBColor
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "docs" / "Software_Engineering_Specification.md"
-OUTPUT = ROOT / "docs" / "Multimodal_Video_Understanding_Engine_SES_v0.3.docx"
+OUTPUT = ROOT / "docs" / "Multimodal_Video_Understanding_Engine_SES_v0.4.docx"
 
 DIAGRAM_IMAGES = {
     "B.2 Use Case Diagram": "use_case_diagram.png",

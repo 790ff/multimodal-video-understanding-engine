@@ -66,7 +66,7 @@ class TimelineResponse(BaseModel):
 
 
 class AskVideoRequest(BaseModel):
-    question: str = Field(min_length=1)
+    question: str
 
 
 class AskVideoResponse(BaseModel):

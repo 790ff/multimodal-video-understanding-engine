@@ -3,16 +3,17 @@
 Backend-centered MVP for turning uploaded videos into timestamped video memory:
 transcripts, keyframes, scene data, timeline events, and question-answerable evidence.
 
-This repository currently contains the backend pipeline through M5 from the Software Engineering Specification.
+This repository currently contains the backend pipeline through M6 from the Software Engineering Specification.
 
 ## Current Milestone
 
-M5: Scene/window timeline builder
+M6: Ask video
 
 - Upload and status endpoints
 - Audio extraction, keyframe extraction, and scene detection
 - Transcription and keyframe visual summaries through provider adapters
 - Scene/window timeline events with evidence links
+- Question answering over stored timeline, transcript, and frame evidence
 - SQLite persistence for video metadata and analysis outputs
 - Tests using fakes without real provider calls
 
@@ -78,10 +79,28 @@ Then open:
 1. Upload a video with `POST /videos/upload`.
 2. Run `POST /videos/{video_id}/analyze`.
 3. Read the generated timeline with `GET /videos/{video_id}/timeline`.
+4. Ask a stored-evidence question with `POST /videos/{video_id}/ask`.
 
 The analyze response includes counts for transcript segments, keyframes, scenes, and
 timeline events. Timeline events include evidence references back to transcript
 segments, keyframes, and scenes.
+
+## Ask A Video Question
+
+`POST /videos/{video_id}/ask` accepts:
+
+```json
+{
+  "question": "What happened at the start?"
+}
+```
+
+The response includes an `answer` and timestamped `evidence` references from the
+stored timeline, transcript, and frame metadata. Empty questions return 400,
+missing videos return 404, and videos that have not completed analysis return 409.
+The ask endpoint does not rerun analysis, generate a new timeline, or prompt over
+the full video file. M6 intentionally avoids ranking, embeddings, and vector
+search so those can be added later without changing the API contract.
 
 ## Run Tests
 
