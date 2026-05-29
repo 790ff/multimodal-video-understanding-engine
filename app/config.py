@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     frame_sample_seconds: int = Field(default=2, alias="FRAME_SAMPLE_SECONDS")
     max_upload_mb: int = Field(default=250, alias="MAX_UPLOAD_MB")
     allowed_video_extensions: str = Field(default="mp4,mov", alias="ALLOWED_VIDEO_EXTENSIONS")
+    transcription_model: str = Field(default="whisper-1", alias="TRANSCRIPTION_MODEL")
+    vision_model: str = Field(default="gpt-4.1-mini", alias="VISION_MODEL")
 
     model_config = SettingsConfigDict(
         env_file=".env",
