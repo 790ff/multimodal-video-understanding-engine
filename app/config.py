@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     allowed_video_extensions: str = Field(default="mp4,mov", alias="ALLOWED_VIDEO_EXTENSIONS")
     transcription_model: str = Field(default="whisper-1", alias="TRANSCRIPTION_MODEL")
     vision_model: str = Field(default="gpt-4.1-mini", alias="VISION_MODEL")
-    gemini_model: str = Field(default="gemini-2.5-flash-lite", alias="GEMINI_MODEL")
+    gemini_model: str = Field(default="gemini-3.5-flash", alias="GEMINI_MODEL")
 
     model_config = SettingsConfigDict(
         env_file=".env",

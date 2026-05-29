@@ -40,7 +40,7 @@ Set one provider for the full analysis pipeline in `.env`:
 ```env
 MODEL_PROVIDER="gemini"
 GEMINI_API_KEY=""
-GEMINI_MODEL="gemini-2.5-flash-lite"
+GEMINI_MODEL="gemini-3.5-flash"
 ```
 
 Or split providers by modality. This keeps Gemini on frame summaries while trying
