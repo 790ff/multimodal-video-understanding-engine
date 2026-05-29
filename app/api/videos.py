@@ -14,6 +14,8 @@ from app.domain.status import VideoStatus
 from app.repositories.video_repository import VideoRepository
 from app.schemas import (
     AnalyzeVideoResponse,
+    AskVideoRequest,
+    AskVideoResponse,
     ErrorResponse,
     TimelineEventResponse,
     TimelineEvidence,
@@ -21,6 +23,7 @@ from app.schemas import (
     VideoStatusResponse,
     VideoUploadResponse,
 )
+from app.services.question_answerer import QuestionAnswerer, RetrievedEvidence
 from app.services.video_processor import VideoProcessor
 from app.services.video_storage import VideoStorageService
 
@@ -35,10 +38,15 @@ def get_video_processor() -> VideoProcessor:
     return VideoProcessor()
 
 
+def get_question_answerer() -> QuestionAnswerer:
+    return QuestionAnswerer()
+
+
 UploadVideoFile = Annotated[UploadFile, File(...)]
 DatabaseSession = Annotated[Session, Depends(get_db)]
 StorageService = Annotated[VideoStorageService, Depends(get_video_storage_service)]
 ProcessorService = Annotated[VideoProcessor, Depends(get_video_processor)]
+QuestionAnswererService = Annotated[QuestionAnswerer, Depends(get_question_answerer)]
 
 
 @router.post(
@@ -213,6 +221,48 @@ def get_video_timeline(
         )
 
     return TimelineResponse(video_id=video.id, events=events)
+
+
+@router.post(
+    "/{video_id}/ask",
+    response_model=AskVideoResponse,
+    response_model_exclude_none=True,
+    responses={
+        400: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        409: {"model": ErrorResponse},
+    },
+)
+def ask_video(
+    video_id: str,
+    request: AskVideoRequest,
+    db: DatabaseSession,
+    question_answerer: QuestionAnswererService,
+) -> AskVideoResponse:
+    repository = VideoRepository(db)
+    result = question_answerer.answer(
+        video_id=video_id,
+        question=request.question,
+        repository=repository,
+    )
+    return AskVideoResponse(
+        answer=result.answer,
+        evidence=[
+            _timeline_evidence_from_retrieved(item)
+            for item in result.evidence
+            if item.evidence_type in {"timeline_event", "transcript", "frame", "scene"}
+        ],
+    )
+
+
+def _timeline_evidence_from_retrieved(item: RetrievedEvidence) -> TimelineEvidence:
+    return TimelineEvidence(
+        type=item.evidence_type,
+        time=item.time,
+        start_time=item.start_time,
+        end_time=item.end_time,
+        path=item.path,
+    )
 
 
 def _evidence_sort_key(

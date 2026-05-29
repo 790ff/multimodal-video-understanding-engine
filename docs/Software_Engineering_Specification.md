@@ -4,7 +4,7 @@ for
 
 # Multimodal Video Understanding Engine
 
-Version 0.3 Draft
+Version 0.4 Draft
 
 Prepared by Thamer
 
@@ -17,6 +17,7 @@ Date: 2026-05-29
 | Thamer | 2026-05-28 | Initial requirements draft based on the IEEE template and MVP discussion | 0.1 |
 | Thamer | 2026-05-28 | Consolidated requirements, design, architecture, and analysis diagrams into one software engineering specification | 0.2 |
 | Thamer | 2026-05-29 | Added provider configuration, scene/window timeline synthesis, timeline retrieval, and evidence-link storage updates | 0.3 |
+| Thamer | 2026-05-29 | Added ask-video retrieval, replaceable answer provider, stored-evidence limits, and M6 API/testing details | 0.4 |
 
 ## Table of Contents
 
@@ -291,11 +292,15 @@ The system shall analyze selected keyframes and combine visual information with 
 Priority: High.
 
 The system shall allow the user to ask natural-language questions about a processed video.
+For M6, question answering is limited to retrieval plus answer generation over stored
+evidence. Ranking, embeddings, vector search, deep mode, full-video prompting, and
+new timeline generation are deferred so the API can remain stable while retrieval
+quality improves later.
 
 #### 4.4.2 Stimulus/Response Sequences
 
 1. User submits a question for a specific video.
-2. System retrieves relevant transcript segments, timeline events, and frame summaries.
+2. System retrieves ordered timeline events and bounded transcript, frame, and scene context.
 3. System generates an answer using the retrieved evidence.
 4. System returns the answer with timestamped evidence.
 
@@ -303,11 +308,12 @@ The system shall allow the user to ask natural-language questions about a proces
 
 - FR-22: The system shall provide an endpoint for asking questions about a video.
 - FR-23: The system shall reject questions for videos that have not been analyzed.
-- FR-24: The system shall retrieve relevant timeline and transcript context before answering.
+- FR-24: The system shall retrieve stored timeline, transcript, and frame context before answering.
 - FR-25: The system shall include timestamped evidence in the answer when possible.
 - FR-26: The system shall support questions about a specific timestamp.
 - FR-27: The system shall support summary questions about the full video.
 - FR-28: The system shall return a clear response when the evidence is insufficient.
+- FR-28a: The ask endpoint shall not rerun video analysis or generate a new timeline.
 
 ### 4.5 Storage and Retrieval
 
@@ -492,15 +498,16 @@ The system should use controlled exceptions for validation errors, not found err
 
 ### 7.9 Testability
 
-The architecture must support testing without requiring real external AI calls for every test.
+The architecture must support testing without requiring real external provider calls for every test.
 
 Testing rules:
 
 - Use fake transcription and vision clients in unit and integration tests.
+- Use fake answer providers for question-answering tests.
 - Unit test each processing service without starting FastAPI.
-- Integration test endpoints with mocked AI calls.
+- Integration test endpoints with mocked provider calls.
 - Use temporary directories and a temporary SQLite database.
-- Test unsupported file type, missing video ID, corrupted video, ask-before-analysis, successful timeline retrieval, and successful question answering.
+- Test unsupported file type, missing video ID, corrupted video, ask-before-analysis, empty ask questions, insufficient ask evidence, successful timeline retrieval, and successful question answering.
 
 ### 7.10 Architecture Decisions
 
@@ -513,6 +520,8 @@ Testing rules:
 | Local files for media | Avoid storing large blobs in the database | Requires cleanup policy later |
 | External provider APIs | Avoid custom model training in MVP | Requires API key, cost control, and mocking in tests |
 | Timestamped evidence | Makes answers trustworthy and verifiable | Requires careful timestamp and evidence modeling |
+| Retrieval-first question answering | Keeps M6 scoped to stored evidence without ranking, embeddings, vector search, or full-video prompting | Enables later retrieval improvements without changing the ask API |
+| Replaceable answer provider | Keeps answer generation behind a small interface | Tests can use fakes and future providers can be added without changing route logic |
 | Explicit status model | Supports retries and future background workers | Requires status endpoint and consistent transitions |
 
 ## Part III. Software Design
@@ -559,7 +568,7 @@ The repository should be organized by responsibility instead of by technical acc
 
 **Runtime data folders.** The MVP stores large files on disk and stores only metadata in SQLite. This avoids putting video blobs inside the database and keeps local development simple.
 
-**Automated tests.** Tests should use temporary folders, a temporary SQLite database, and fake AI clients so most verification can run without external API cost.
+**Automated tests.** Tests should use temporary folders, a temporary SQLite database, and fake provider clients so most verification can run without external API cost.
 
 ### 8.2 API Layer Design
 
@@ -582,7 +591,7 @@ Application services coordinate the system workflows. They are allowed to call r
 | `video_storage.py` | Validate file metadata, generate safe names, store uploaded videos, and create video records. |
 | `video_processor.py` | Orchestrate the full analysis workflow and status transitions. |
 | `timeline_builder.py` | Group transcript segments, scenes, keyframes, and visual summaries into ordered scene/window timeline events with evidence links. |
-| `question_answerer.py` | Retrieve relevant evidence and generate answers with timestamp references. |
+| `question_answerer.py` | Retrieve bounded stored evidence and generate answers through a replaceable answer provider with timestamp references. |
 
 ### 8.4 Infrastructure Adapter Design
 
@@ -606,6 +615,7 @@ Responsibilities:
 - Create and update video records.
 - Persist transcript segments, keyframes, scenes, timeline events, and evidence links.
 - Retrieve timeline data by video identifier.
+- Retrieve ordered stored evidence for question answering.
 - Retrieve video status and failure reason.
 - Keep database operations away from API route handlers and processing services.
 
@@ -875,6 +885,11 @@ Response:
       "time": 15.0,
       "type": "frame",
       "path": "data/frames/{video_id}/frame_000008.jpg"
+    },
+    {
+      "start_time": 14.0,
+      "end_time": 16.5,
+      "type": "transcript"
     }
   ]
 }
@@ -886,6 +901,14 @@ Error cases:
 - 404 if the video does not exist.
 - 409 if the video has not been analyzed.
 
+M6 behavior:
+
+- The request question is trimmed and whitespace-only questions are rejected.
+- Evidence retrieval loads stored timeline events in timestamp order and includes bounded transcript, frame, and scene context.
+- Answers must be generated only from retrieved stored evidence.
+- If no answerable stored evidence exists, the API returns a safe insufficient-evidence answer.
+- The ask endpoint does not call `/analyze`, rebuild the timeline, send the full video, or use ranking, embeddings, or vector search.
+
 ### 10.6 External Integration Contracts
 
 | Integration | Contract |
@@ -896,7 +919,7 @@ Error cases:
 | Transcription provider | Returns transcript text and timestamp segments when available. |
 | Vision-language provider | Receives selected frames only and returns concise visual summaries. |
 | Timeline builder | Receives stored transcript, keyframes, scenes, and visual summaries; returns traceable timeline events without requiring full-video prompting. |
-| Language model | Receives compact evidence context and returns answers with traceable references. |
+| Answer provider | Receives compact stored evidence context and returns answers with traceable references. |
 
 ### 10.7 API Error Envelope
 
@@ -956,6 +979,8 @@ Unit tests should cover:
 - Scene fallback behavior.
 - Timeline event ordering.
 - Timestamp-based evidence retrieval.
+- Bounded ask evidence retrieval from timeline, transcript, and frame records.
+- Insufficient-evidence answer generation.
 - Error handling for missing video IDs and invalid states.
 
 ### 11.2 Integration Tests
@@ -968,6 +993,9 @@ Integration tests should cover:
 - Retrieving a timeline after analysis.
 - Asking a question after analysis.
 - Rejecting ask requests before analysis.
+- Rejecting empty ask questions.
+- Returning 404 for missing ask videos.
+- Returning timestamped evidence with ask answers.
 
 ### 11.3 Manual Acceptance Test
 
@@ -1044,7 +1072,7 @@ This matrix connects requirements to implementation modules and planned verifica
 | Failure handling | FR-15, NFR-8, NFR-18 | `domain/errors.py`, `video_processor.py`, API exception handlers | Corrupted video test, missing config test, safe error response test. |
 | Visual analysis | FR-16 to FR-17, FR-21 | `adapters/frame_analyzer.py` | Mock vision client test and frame selection test. |
 | Timeline generation | FR-18 to FR-20 | `timeline_builder.py`, timeline repository methods, `/videos/{video_id}/timeline` | Timeline ordering test, evidence link test, and timeline API test. |
-| Video question answering | FR-22 to FR-28 | `question_answerer.py`, evidence retrieval methods | Ask-before-analysis test, timestamp question test, summary question test. |
+| Video question answering | FR-22 to FR-28a | `question_answerer.py`, evidence retrieval methods, `/videos/{video_id}/ask` | Success, missing video, not analyzed, empty question, insufficient evidence, and timestamped evidence tests. |
 | Storage and retrieval | FR-29 to FR-35, NFR-19 | `db/models.py`, `video_repository.py` | Repository tests with temporary SQLite database. |
 | Security and configuration | NFR-6 to NFR-14 | `config.py`, upload validation, API error handling | Env var test, rejected extension test, no-secret-response check. |
 | Release readiness | OR-1 to OR-5 | README, `.env.example`, test suite | Manual acceptance checklist and GitHub readiness review. |
