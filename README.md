@@ -21,7 +21,7 @@ M1: Project scaffold
 
 - Python 3.11 or newer
 - FFmpeg installed locally before media preprocessing work begins
-- OpenAI API key before transcription and vision analysis milestones
+- Provider API key before transcription and vision analysis milestones
 
 ## Setup
 
@@ -30,6 +30,26 @@ python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
+```
+
+## Model Provider Configuration
+
+The analysis pipeline can use either OpenAI or Gemini for transcription and frame summaries.
+Set the provider in `.env`:
+
+```env
+MODEL_PROVIDER="gemini"
+GEMINI_API_KEY=""
+GEMINI_MODEL="gemini-2.5-flash-lite"
+```
+
+Or keep the default OpenAI setup:
+
+```env
+MODEL_PROVIDER="openai"
+OPENAI_API_KEY=""
+TRANSCRIPTION_MODEL="whisper-1"
+VISION_MODEL="gpt-4.1-mini"
 ```
 
 ## Run The API

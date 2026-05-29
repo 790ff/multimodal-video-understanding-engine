@@ -13,7 +13,9 @@ class Settings(BaseSettings):
     app_version: str = Field(default="0.1.0", alias="APP_VERSION")
     environment: str = Field(default="development", alias="ENVIRONMENT")
 
+    model_provider: str = Field(default="openai", alias="MODEL_PROVIDER")
     openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
+    gemini_api_key: Optional[str] = Field(default=None, alias="GEMINI_API_KEY")
 
     database_url: str = Field(default="sqlite:///data/video_ai.sqlite3", alias="DATABASE_URL")
     upload_dir: Path = Field(default=Path("data/uploads"), alias="UPLOAD_DIR")
@@ -25,6 +27,7 @@ class Settings(BaseSettings):
     allowed_video_extensions: str = Field(default="mp4,mov", alias="ALLOWED_VIDEO_EXTENSIONS")
     transcription_model: str = Field(default="whisper-1", alias="TRANSCRIPTION_MODEL")
     vision_model: str = Field(default="gpt-4.1-mini", alias="VISION_MODEL")
+    gemini_model: str = Field(default="gemini-2.5-flash-lite", alias="GEMINI_MODEL")
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -44,6 +47,10 @@ class Settings(BaseSettings):
             for extension in self.allowed_video_extensions.split(",")
             if extension.strip()
         }
+
+    @property
+    def active_model_provider(self) -> str:
+        return self.model_provider.strip().lower()
 
 
 @lru_cache

@@ -6,10 +6,11 @@ from pathlib import Path
 from typing import Optional
 
 from app.adapters.audio_extractor import AudioExtractor
-from app.adapters.frame_analyzer import FrameAnalysisResult, FrameAnalyzer
+from app.adapters.frame_analyzer import FrameAnalysisResult, FrameAnalyzer, GeminiFrameAnalyzer
 from app.adapters.frame_extractor import ExtractedFrame, FrameExtractor
+from app.adapters.provider_factory import create_frame_analyzer, create_transcriber
 from app.adapters.scene_detector import DetectedScene, SceneDetector
-from app.adapters.transcriber import Transcriber, TranscriptSegmentData
+from app.adapters.transcriber import GeminiTranscriber, Transcriber, TranscriptSegmentData
 from app.config import Settings, get_settings
 from app.domain.errors import ConflictAppError, NotFoundAppError, ProcessingAppError
 from app.domain.status import VideoStatus
@@ -35,16 +36,16 @@ class VideoProcessor:
         audio_extractor: Optional[AudioExtractor] = None,
         frame_extractor: Optional[FrameExtractor] = None,
         scene_detector: Optional[SceneDetector] = None,
-        transcriber: Optional[Transcriber] = None,
-        frame_analyzer: Optional[FrameAnalyzer] = None,
+        transcriber: Optional[Transcriber | GeminiTranscriber] = None,
+        frame_analyzer: Optional[FrameAnalyzer | GeminiFrameAnalyzer] = None,
         settings: Optional[Settings] = None,
     ) -> None:
         self.settings = settings or get_settings()
         self.audio_extractor = audio_extractor or AudioExtractor()
         self.frame_extractor = frame_extractor or FrameExtractor()
         self.scene_detector = scene_detector or SceneDetector()
-        self.transcriber = transcriber or Transcriber(settings=self.settings)
-        self.frame_analyzer = frame_analyzer or FrameAnalyzer(settings=self.settings)
+        self.transcriber = transcriber or create_transcriber(self.settings)
+        self.frame_analyzer = frame_analyzer or create_frame_analyzer(self.settings)
 
     def analyze(self, video_id: str, repository: VideoRepository) -> AnalysisResult:
         video = repository.get(video_id)
