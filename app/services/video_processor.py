@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Optional
 
 from app.adapters.audio_extractor import AudioExtractor
-from app.adapters.frame_extractor import FrameExtractor
-from app.adapters.scene_detector import SceneDetector
+from app.adapters.frame_extractor import ExtractedFrame, FrameExtractor
+from app.adapters.scene_detector import DetectedScene, SceneDetector
 from app.config import Settings, get_settings
 from app.domain.errors import ConflictAppError, NotFoundAppError, ProcessingAppError
 from app.domain.status import VideoStatus
@@ -69,7 +69,10 @@ class VideoProcessor:
                 output_dir=frame_dir,
                 sample_seconds=self.settings.frame_sample_seconds,
             )
-            scenes = self.scene_detector.detect(video_path=video_path)
+            scenes = self._detect_scenes_with_fallback(
+                video_path=video_path,
+                keyframes=keyframes,
+            )
 
             repository.replace_keyframes(
                 video,
@@ -106,6 +109,38 @@ class VideoProcessor:
         shutil.rmtree(frame_dir, ignore_errors=True)
         audio_path.parent.mkdir(parents=True, exist_ok=True)
         frame_dir.mkdir(parents=True, exist_ok=True)
+
+    def _detect_scenes_with_fallback(
+        self,
+        *,
+        video_path: Path,
+        keyframes: list[ExtractedFrame],
+    ) -> list[DetectedScene]:
+        try:
+            scenes = self.scene_detector.detect(video_path=video_path)
+        except Exception:
+            return self._fallback_scenes_from_keyframes(keyframes)
+
+        return scenes or self._fallback_scenes_from_keyframes(keyframes)
+
+    def _fallback_scenes_from_keyframes(
+        self,
+        keyframes: list[ExtractedFrame],
+    ) -> list[DetectedScene]:
+        scenes: list[DetectedScene] = []
+        for index, keyframe in enumerate(keyframes):
+            start_time = round(keyframe.time, 3)
+            if index + 1 < len(keyframes):
+                end_time = round(keyframes[index + 1].time, 3)
+            else:
+                end_time = round(start_time + self.settings.frame_sample_seconds, 3)
+            scenes.append(
+                DetectedScene(
+                    start_time=start_time,
+                    end_time=max(start_time, end_time),
+                )
+            )
+        return scenes
 
     def _mark_failed(self, *, video_id: str, repository: VideoRepository) -> None:
         repository.session.rollback()

@@ -55,6 +55,12 @@ class FakeSceneDetector:
         ]
 
 
+class FailingSceneDetector:
+    def detect(self, video_path: Path) -> list[DetectedScene]:
+        assert video_path.exists()
+        raise RuntimeError("PySceneDetect could not decode scene boundaries")
+
+
 class FailingAudioExtractor:
     def extract(self, video_path: Path, output_path: Path) -> AudioExtractionResult:
         raise RuntimeError("secret path /tmp/.env OPENAI_API_KEY=abc123")
@@ -227,6 +233,50 @@ def test_analyze_video_runs_preprocessing_and_persists_metadata(
         (3.0, str(tmp_path / "frames" / video_id / "frame_000002.jpg")),
     ]
     assert scene_rows == [(0.0, 2.5), (2.5, 5.0)]
+
+
+def test_analyze_video_uses_fallback_scenes_when_scene_detection_fails(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    processor = VideoProcessor(
+        audio_extractor=FakeAudioExtractor(),
+        frame_extractor=FakeFrameExtractor(),
+        scene_detector=FailingSceneDetector(),
+        settings=get_settings(),
+    )
+    client.app.dependency_overrides[get_video_processor] = lambda: processor
+
+    upload_response = client.post(
+        "/videos/upload",
+        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+    )
+    video_id = upload_response.json()["video_id"]
+
+    response = client.post(f"/videos/{video_id}/analyze")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "video_id": video_id,
+        "status": "analyzed",
+        "transcript_segments": 0,
+        "keyframes": 2,
+        "scenes": 2,
+        "timeline_events": 0,
+    }
+
+    with sqlite3.connect(tmp_path / "test_video_ai.sqlite3") as connection:
+        video_row = connection.execute(
+            "select status, error_message from videos where id = ?",
+            (video_id,),
+        ).fetchone()
+        scene_rows = connection.execute(
+            "select start_time, end_time from scenes where video_id = ? order by start_time",
+            (video_id,),
+        ).fetchall()
+
+    assert video_row == ("analyzed", None)
+    assert scene_rows == [(0.0, 3.0), (3.0, 6.0)]
 
 
 def test_analyze_video_returns_404_for_missing_video(client: TestClient) -> None:
