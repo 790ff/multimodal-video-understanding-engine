@@ -5,7 +5,11 @@ from pathlib import Path
 import pytest
 
 from app.adapters.frame_analyzer import FrameAnalyzer, GeminiFrameAnalyzer
-from app.adapters.provider_factory import create_frame_analyzer, create_transcriber
+from app.adapters.provider_factory import (
+    FallbackTranscriber,
+    create_frame_analyzer,
+    create_transcriber,
+)
 from app.adapters.transcriber import GeminiTranscriber, Transcriber
 from app.config import Settings
 from app.domain.errors import ProcessingAppError
@@ -15,11 +19,15 @@ def make_settings(
     tmp_path: Path,
     *,
     model_provider: str = "openai",
+    transcription_provider_order: str | None = None,
+    frame_analysis_provider: str | None = None,
     gemini_api_key: str | None = None,
 ) -> Settings:
     return Settings(
         _env_file=None,
         model_provider=model_provider,
+        transcription_provider_order=transcription_provider_order,
+        frame_analysis_provider=frame_analysis_provider,
         upload_dir=tmp_path / "uploads",
         audio_dir=tmp_path / "audio",
         frame_dir=tmp_path / "frames",
@@ -70,6 +78,35 @@ def test_provider_factory_creates_gemini_adapters(tmp_path: Path) -> None:
     assert isinstance(create_frame_analyzer(settings), GeminiFrameAnalyzer)
 
 
+def test_provider_factory_uses_separate_transcription_and_frame_providers(
+    tmp_path: Path,
+) -> None:
+    settings = make_settings(
+        tmp_path,
+        model_provider="openai",
+        transcription_provider_order="openai",
+        frame_analysis_provider="gemini",
+        gemini_api_key="test-key",
+    )
+
+    assert isinstance(create_transcriber(settings), Transcriber)
+    assert isinstance(create_frame_analyzer(settings), GeminiFrameAnalyzer)
+
+
+def test_provider_factory_creates_fallback_transcriber(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        model_provider="gemini",
+        transcription_provider_order="gemini,openai",
+        gemini_api_key="test-key",
+    )
+
+    transcriber = create_transcriber(settings)
+
+    assert isinstance(transcriber, FallbackTranscriber)
+    assert [provider for provider, _ in transcriber.transcribers] == ["gemini", "openai"]
+
+
 def test_provider_factory_rejects_unsupported_provider(tmp_path: Path) -> None:
     settings = make_settings(tmp_path, model_provider="unknown-provider")
 
@@ -81,6 +118,46 @@ def test_provider_factory_rejects_unsupported_provider(tmp_path: Path) -> None:
         "provider": "unknown-provider",
         "supported_providers": ["gemini", "openai"],
     }
+
+
+def test_fallback_transcriber_uses_next_provider_after_provider_failure(
+    tmp_path: Path,
+) -> None:
+    class FailingTranscriber:
+        def transcribe(self, audio_path: Path) -> list[object]:
+            raise ProcessingAppError(
+                "Transcription service failed.",
+                code="transcription_failed",
+            )
+
+    class SuccessfulTranscriber:
+        def transcribe(self, audio_path: Path) -> list[str]:
+            return ["saved by fallback"]
+
+    transcriber = FallbackTranscriber(
+        [
+            ("first", FailingTranscriber()),
+            ("second", SuccessfulTranscriber()),
+        ]
+    )
+
+    assert transcriber.transcribe(tmp_path / "audio.wav") == ["saved by fallback"]
+
+
+def test_fallback_transcriber_does_not_hide_non_provider_errors(tmp_path: Path) -> None:
+    class MissingAudioTranscriber:
+        def transcribe(self, audio_path: Path) -> list[object]:
+            raise ProcessingAppError(
+                "Extracted audio file was not found.",
+                code="audio_file_missing",
+            )
+
+    transcriber = FallbackTranscriber([("first", MissingAudioTranscriber())])
+
+    with pytest.raises(ProcessingAppError) as exc_info:
+        transcriber.transcribe(tmp_path / "missing.wav")
+
+    assert exc_info.value.code == "audio_file_missing"
 
 
 def test_gemini_transcriber_missing_api_key_raises_controlled_error(tmp_path: Path) -> None:

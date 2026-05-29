@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     environment: str = Field(default="development", alias="ENVIRONMENT")
 
     model_provider: str = Field(default="openai", alias="MODEL_PROVIDER")
+    transcription_provider_order: Optional[str] = Field(
+        default=None,
+        alias="TRANSCRIPTION_PROVIDER_ORDER",
+    )
+    frame_analysis_provider: Optional[str] = Field(default=None, alias="FRAME_ANALYSIS_PROVIDER")
     openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
     gemini_api_key: Optional[str] = Field(default=None, alias="GEMINI_API_KEY")
 
@@ -51,6 +56,29 @@ class Settings(BaseSettings):
     @property
     def active_model_provider(self) -> str:
         return self.model_provider.strip().lower()
+
+    @property
+    def active_transcription_providers(self) -> list[str]:
+        return self._provider_list(self.transcription_provider_order) or [
+            self.active_model_provider,
+        ]
+
+    @property
+    def active_frame_analysis_provider(self) -> str:
+        return (
+            self.frame_analysis_provider.strip().lower()
+            if self.frame_analysis_provider
+            else self.active_model_provider
+        )
+
+    def _provider_list(self, providers: Optional[str]) -> list[str]:
+        if not providers:
+            return []
+        return [
+            provider.strip().lower()
+            for provider in providers.split(",")
+            if provider.strip()
+        ]
 
 
 @lru_cache

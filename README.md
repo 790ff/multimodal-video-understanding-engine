@@ -35,12 +35,23 @@ cp .env.example .env
 ## Model Provider Configuration
 
 The analysis pipeline can use either OpenAI or Gemini for transcription and frame summaries.
-Set the provider in `.env`:
+Set one provider for the full analysis pipeline in `.env`:
 
 ```env
 MODEL_PROVIDER="gemini"
 GEMINI_API_KEY=""
 GEMINI_MODEL="gemini-2.5-flash-lite"
+```
+
+Or split providers by modality. This keeps Gemini on frame summaries while trying
+multiple transcription providers in order:
+
+```env
+MODEL_PROVIDER="gemini"
+TRANSCRIPTION_PROVIDER_ORDER="gemini,openai"
+FRAME_ANALYSIS_PROVIDER="gemini"
+GEMINI_API_KEY=""
+OPENAI_API_KEY=""
 ```
 
 Or keep the default OpenAI setup:

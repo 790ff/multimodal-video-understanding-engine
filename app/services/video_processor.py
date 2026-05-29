@@ -8,7 +8,11 @@ from typing import Optional
 from app.adapters.audio_extractor import AudioExtractor
 from app.adapters.frame_analyzer import FrameAnalysisResult, FrameAnalyzer, GeminiFrameAnalyzer
 from app.adapters.frame_extractor import ExtractedFrame, FrameExtractor
-from app.adapters.provider_factory import create_frame_analyzer, create_transcriber
+from app.adapters.provider_factory import (
+    FallbackTranscriber,
+    create_frame_analyzer,
+    create_transcriber,
+)
 from app.adapters.scene_detector import DetectedScene, SceneDetector
 from app.adapters.transcriber import GeminiTranscriber, Transcriber, TranscriptSegmentData
 from app.config import Settings, get_settings
@@ -36,7 +40,7 @@ class VideoProcessor:
         audio_extractor: Optional[AudioExtractor] = None,
         frame_extractor: Optional[FrameExtractor] = None,
         scene_detector: Optional[SceneDetector] = None,
-        transcriber: Optional[Transcriber | GeminiTranscriber] = None,
+        transcriber: Optional[Transcriber | GeminiTranscriber | FallbackTranscriber] = None,
         frame_analyzer: Optional[FrameAnalyzer | GeminiFrameAnalyzer] = None,
         settings: Optional[Settings] = None,
     ) -> None:
