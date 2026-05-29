@@ -15,7 +15,7 @@ from docx.shared import Inches, Pt, RGBColor
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "docs" / "Software_Engineering_Specification.md"
-OUTPUT = ROOT / "docs" / "Multimodal_Video_Understanding_Engine_SES_v0.2.docx"
+OUTPUT = ROOT / "docs" / "Multimodal_Video_Understanding_Engine_SES_v0.3.docx"
 
 DIAGRAM_IMAGES = {
     "B.2 Use Case Diagram": "use_case_diagram.png",
@@ -332,7 +332,7 @@ def add_header_footer(doc: Document) -> None:
     footer_para = section.footer.paragraphs[0]
     footer_para.text = ""
     footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    footer_para.add_run("Version 0.2 Draft | Page ")
+    footer_para.add_run("Version 0.3 Draft | Page ")
     add_field(footer_para, "PAGE", "1")
     for run in footer_para.runs:
         run.font.size = Pt(9)

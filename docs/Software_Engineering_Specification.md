@@ -4,11 +4,11 @@ for
 
 # Multimodal Video Understanding Engine
 
-Version 0.2 Draft
+Version 0.3 Draft
 
 Prepared by Thamer
 
-Date: 2026-05-28
+Date: 2026-05-29
 
 ## Revision History
 
@@ -16,6 +16,7 @@ Date: 2026-05-28
 |---|---|---|---|
 | Thamer | 2026-05-28 | Initial requirements draft based on the IEEE template and MVP discussion | 0.1 |
 | Thamer | 2026-05-28 | Consolidated requirements, design, architecture, and analysis diagrams into one software engineering specification | 0.2 |
+| Thamer | 2026-05-29 | Added provider configuration, scene/window timeline synthesis, timeline retrieval, and evidence-link storage updates | 0.3 |
 
 ## Table of Contents
 
@@ -133,7 +134,7 @@ The MVP will run in a local development environment with:
 - FFmpeg installed on the host machine.
 - OpenCV for frame extraction.
 - PySceneDetect for scene detection.
-- OpenAI API access for transcription and vision-language reasoning.
+- Provider API access for transcription and vision-language reasoning, initially OpenAI or Gemini.
 - SQLite for initial metadata storage, with PostgreSQL as a future upgrade.
 - Local folders for uploaded videos, extracted audio, and keyframes.
 
@@ -163,7 +164,7 @@ The MVP should include:
 - Supported formats for the MVP are mp4 and mov. Other formats are TBD.
 - The user has permission to process the uploaded video.
 - The development machine has enough disk space for uploads, audio files, and extracted frames.
-- External AI APIs are available during analysis.
+- External provider APIs are available during analysis.
 - The first release does not require real-time processing or live camera input.
 
 ## 3. External Interface Requirements
@@ -192,8 +193,8 @@ No special hardware interface is required for the MVP. The system should run on 
 | FFmpeg | Extract audio from video and support video processing operations. |
 | OpenCV | Read videos and extract frames. |
 | PySceneDetect | Detect scene boundaries. |
-| OpenAI Transcription API | Convert extracted audio into transcript text with timestamps. |
-| OpenAI Vision-capable model | Analyze keyframes and visual context. |
+| Provider transcription API | Convert extracted audio into transcript text with timestamps. |
+| Provider vision-language model | Analyze selected keyframes and visual context. |
 | SQLite | Store metadata and analysis records for the MVP. |
 | SQLAlchemy | Provide database access through repository classes. |
 | Alembic | Manage database migrations once the schema stabilizes for release. |
@@ -263,16 +264,16 @@ The system shall preprocess uploaded videos by extracting audio, transcript segm
 
 Priority: High.
 
-The system shall analyze selected keyframes and combine visual information with transcript segments to produce a chronological timeline.
+The system shall analyze selected keyframes and combine visual information with transcript segments inside scene or time-window boundaries. Timeline generation must remain evidence-first: the system builds events from stored transcript segments, keyframes, scene records, and visual summaries rather than treating the whole video as an opaque model prompt.
 
 #### 4.3.2 Stimulus/Response Sequences
 
-1. System selects frames and transcript segments for each scene or time interval.
-2. System sends selected visual and textual context to a vision-language model.
-3. System stores visual summaries.
-4. System builds timeline events.
+1. System creates visual summaries for selected keyframes.
+2. System groups transcript segments, visual summaries, and keyframes by scene or fallback time window.
+3. System synthesizes one timeline event per scene or window.
+4. System stores each timeline event with evidence links to transcript, frame, and scene records.
 5. User requests the timeline.
-6. System returns ordered events with timestamps.
+6. System returns ordered events with timestamps and evidence references.
 
 #### 4.3.3 Functional Requirements
 
@@ -405,7 +406,7 @@ The backend will run as one FastAPI application. Internally, the application wil
 
 Architectural rules:
 
-- API routes shall not call FFmpeg, OpenCV, PySceneDetect, or OpenAI directly.
+- API routes shall not call FFmpeg, OpenCV, PySceneDetect, or provider APIs directly.
 - Application services shall orchestrate workflows.
 - Infrastructure adapters shall isolate external tools and APIs.
 - Repositories shall isolate database access.
@@ -419,7 +420,7 @@ Architectural rules:
 | Application Layer | Main workflows and business orchestration | `video_storage.py`, `video_processor.py`, `timeline_builder.py`, `question_answerer.py` |
 | Domain Layer | Core entities and status concepts | `Video`, `TranscriptSegment`, `Keyframe`, `Scene`, `TimelineEvent`, `EvidenceLink` |
 | Persistence Layer | Database models and repositories | `video_repository.py`, SQLite models |
-| Infrastructure Layer | External tools, file storage, and AI API clients | FFmpeg, OpenCV, PySceneDetect, OpenAI clients |
+| Infrastructure Layer | External tools, file storage, and provider API clients | FFmpeg, OpenCV, PySceneDetect, OpenAI clients, Gemini clients |
 
 ### 7.4 API Boundaries
 
@@ -447,11 +448,11 @@ Pipeline steps:
 4. Extract keyframes at a configurable interval.
 5. Detect scene boundaries.
 6. Analyze selected frames.
-7. Build timeline events from transcript, scenes, and visual summaries.
+7. Build scene/window timeline events from transcript, scenes, keyframes, and visual summaries.
 8. Store analysis results for reuse.
 9. Answer questions using stored evidence.
 
-The system shall not reprocess a full video for every user question.
+The system shall not reprocess a full video for every user question. The timeline layer stores compact, traceable context so later question answering can retrieve evidence instead of re-running full-clip analysis.
 
 ### 7.6 Data and Storage Architecture
 
@@ -510,7 +511,7 @@ Testing rules:
 | SQLAlchemy repository access | Keeps database code isolated and migration-friendly | Slight setup overhead, better maintainability |
 | Alembic before release | Makes schema changes traceable | Can be introduced after the first tables are stable |
 | Local files for media | Avoid storing large blobs in the database | Requires cleanup policy later |
-| External AI APIs | Avoid custom model training in MVP | Requires API key, cost control, and mocking in tests |
+| External provider APIs | Avoid custom model training in MVP | Requires API key, cost control, and mocking in tests |
 | Timestamped evidence | Makes answers trustworthy and verifiable | Requires careful timestamp and evidence modeling |
 | Explicit status model | Supports retries and future background workers | Requires status endpoint and consistent transitions |
 
@@ -546,7 +547,7 @@ The repository should be organized by responsibility instead of by technical acc
 
 **Application entry point.** The main file should stay thin. It should create the app, include routers, and configure startup behavior only.
 
-**API package.** Route handlers should validate HTTP requests and map application errors to HTTP responses. They should not run FFmpeg commands, call AI APIs, or write database records directly.
+**API package.** Route handlers should validate HTTP requests and map application errors to HTTP responses. They should not run FFmpeg commands, call provider APIs, or write database records directly.
 
 **Domain package.** Domain files define the shared vocabulary of the system: video statuses, entity fields, evidence types, and safe application errors.
 
@@ -570,7 +571,7 @@ Responsibilities:
 - Validate HTTP requests and return structured JSON responses.
 - Convert application errors into appropriate HTTP status codes.
 - Use Pydantic request and response schemas.
-- Avoid direct calls to FFmpeg, OpenCV, PySceneDetect, OpenAI APIs, or database internals.
+- Avoid direct calls to FFmpeg, OpenCV, PySceneDetect, provider APIs, or database internals.
 
 ### 8.3 Application Service Design
 
@@ -580,7 +581,7 @@ Application services coordinate the system workflows. They are allowed to call r
 |---|---|
 | `video_storage.py` | Validate file metadata, generate safe names, store uploaded videos, and create video records. |
 | `video_processor.py` | Orchestrate the full analysis workflow and status transitions. |
-| `timeline_builder.py` | Merge transcript segments, scenes, and visual summaries into ordered timeline events. |
+| `timeline_builder.py` | Group transcript segments, scenes, keyframes, and visual summaries into ordered scene/window timeline events with evidence links. |
 | `question_answerer.py` | Retrieve relevant evidence and generate answers with timestamp references. |
 
 ### 8.4 Infrastructure Adapter Design
@@ -590,10 +591,11 @@ Infrastructure adapters isolate external tools and APIs behind small local inter
 | Adapter | Tool or API | Output |
 |---|---|---|
 | `adapters/audio_extractor.py` | FFmpeg | Audio file path and extraction metadata. |
-| `adapters/transcriber.py` | OpenAI transcription service | Transcript segments with timestamps when available. |
+| `adapters/transcriber.py` | Provider transcription service | Transcript segments with timestamps when available. |
 | `adapters/frame_extractor.py` | OpenCV | Keyframe records with timestamps and file paths. |
 | `adapters/scene_detector.py` | PySceneDetect | Scene start and end timestamps. |
-| `adapters/frame_analyzer.py` | Vision-language model | Visual summaries linked to frames and timestamps. |
+| `adapters/frame_analyzer.py` | Provider vision-language model | Visual summaries linked to frames and timestamps. |
+| `adapters/provider_factory.py` | Provider configuration | Selects active transcription and frame-analysis adapters. |
 
 ### 8.5 Repository Design
 
@@ -638,7 +640,14 @@ Configuration should be loaded from environment variables through one central se
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `OPENAI_API_KEY` | API key for transcription and vision-language analysis. | Required |
+| `MODEL_PROVIDER` | Default provider used by model-backed adapters. | `openai` |
+| `TRANSCRIPTION_PROVIDER_ORDER` | Optional comma-separated transcription fallback order. | Empty |
+| `FRAME_ANALYSIS_PROVIDER` | Optional provider override for frame summaries. | Empty |
+| `OPENAI_API_KEY` | OpenAI API key for transcription or vision-language analysis when OpenAI is selected. | Required when used |
+| `GEMINI_API_KEY` | Gemini API key for transcription or frame analysis when Gemini is selected. | Required when used |
+| `TRANSCRIPTION_MODEL` | OpenAI transcription model. | `whisper-1` |
+| `VISION_MODEL` | OpenAI vision-language model. | `gpt-4.1-mini` |
+| `GEMINI_MODEL` | Gemini model used by Gemini adapters. | `gemini-3.5-flash` |
 | `DATABASE_URL` | SQLite database path or future PostgreSQL URL. | `sqlite:///data/video_ai.sqlite3` |
 | `UPLOAD_DIR` | Uploaded video directory. | `data/uploads` |
 | `AUDIO_DIR` | Extracted audio directory. | `data/audio` |
@@ -728,7 +737,7 @@ The MVP should use SQLAlchemy for database access and SQLite as the database eng
 
 The API should remain intentionally small for the MVP. It should expose the core product behavior without forcing a frontend to exist before the backend is proven.
 
-The end-to-end API and integration flow is visualized in Appendix B.15. That swimlane diagram shows which layer owns each interaction and how REST calls, processing services, external tools, AI APIs, SQLite, and local files work together.
+The end-to-end API and integration flow is visualized in Appendix B.15. That swimlane diagram shows which layer owns each interaction and how REST calls, processing services, external tools, provider APIs, SQLite, and local files work together.
 
 ### 10.1 Upload Video
 
@@ -814,6 +823,16 @@ Response:
       "summary": "The video opens on a dashboard screen.",
       "evidence": [
         {
+          "type": "scene",
+          "start_time": 0.0,
+          "end_time": 5.0
+        },
+        {
+          "type": "transcript",
+          "start_time": 0.0,
+          "end_time": 4.7
+        },
+        {
           "type": "frame",
           "time": 2.0,
           "path": "data/frames/{video_id}/frame_000001.jpg"
@@ -874,8 +893,9 @@ Error cases:
 | FFmpeg | Called through a subprocess wrapper; failures become controlled processing errors. |
 | OpenCV | Used by the frame extractor; frame paths and timestamps are returned as structured records. |
 | PySceneDetect | Used by the scene detector; scene boundaries are optional but stored when available. |
-| Transcription model | Returns transcript text and timestamp segments when available. |
-| Vision-language model | Receives selected frames only and returns concise visual summaries. |
+| Transcription provider | Returns transcript text and timestamp segments when available. |
+| Vision-language provider | Receives selected frames only and returns concise visual summaries. |
+| Timeline builder | Receives stored transcript, keyframes, scenes, and visual summaries; returns traceable timeline events without requiring full-video prompting. |
 | Language model | Receives compact evidence context and returns answers with traceable references. |
 
 ### 10.7 API Error Envelope
@@ -907,7 +927,7 @@ The `code` field should be stable enough for a future frontend to handle. The `m
 | Extract keyframes | Video path and sample interval | Keyframe paths and timestamps | Mark video `failed` if the video cannot be decoded. |
 | Detect scenes | Video path | Scene records | Continue with interval-based pseudo-scenes if scene detection fails safely. |
 | Analyze frames | Selected keyframes | Visual summaries | Mark video `failed` if visual analysis is required; allow future partial mode as a later enhancement. |
-| Build timeline | Transcript, keyframes, scenes, visual summaries | Timeline events and evidence links | Mark video `failed` if no usable evidence exists. |
+| Build timeline | Transcript, keyframes, scenes, visual summaries | Scene/window timeline events and evidence links | Mark video `failed` if no usable evidence exists. |
 | Answer question | Question and stored video memory | Answer with evidence | Return conflict if video is not analyzed; return insufficient-evidence answer when evidence is weak. |
 
 ### 10.9 Request Limits and Identifier Rules
@@ -971,7 +991,7 @@ The MVP is acceptable when a reviewer can:
 | M2: Upload and metadata | Upload endpoint, safe file storage, video repository, status endpoint. |
 | M3: Media preprocessing | FFmpeg audio extraction, OpenCV frame extraction, PySceneDetect scene detection. |
 | M4: Transcription and visual summaries | Transcription adapter, frame analyzer adapter, fake clients for tests. |
-| M5: Timeline builder | Stored transcript, frames, scenes, timeline events, evidence links. |
+| M5: Scene/window timeline builder | Stored transcript, frames, scenes, visual summaries, timeline events, and evidence links. |
 | M6: Ask video | Question endpoint, evidence retrieval, answer generation, timestamped evidence. |
 | M7: Verification and release | Tests, README workflow, GitHub-ready repository state. |
 
@@ -1023,7 +1043,7 @@ This matrix connects requirements to implementation modules and planned verifica
 | Scene detection | FR-13 to FR-14 | `adapters/scene_detector.py` | Scene fallback test and mocked detection test. |
 | Failure handling | FR-15, NFR-8, NFR-18 | `domain/errors.py`, `video_processor.py`, API exception handlers | Corrupted video test, missing config test, safe error response test. |
 | Visual analysis | FR-16 to FR-17, FR-21 | `adapters/frame_analyzer.py` | Mock vision client test and frame selection test. |
-| Timeline generation | FR-18 to FR-20 | `timeline_builder.py`, timeline repository methods | Timeline ordering test and evidence link test. |
+| Timeline generation | FR-18 to FR-20 | `timeline_builder.py`, timeline repository methods, `/videos/{video_id}/timeline` | Timeline ordering test, evidence link test, and timeline API test. |
 | Video question answering | FR-22 to FR-28 | `question_answerer.py`, evidence retrieval methods | Ask-before-analysis test, timestamp question test, summary question test. |
 | Storage and retrieval | FR-29 to FR-35, NFR-19 | `db/models.py`, `video_repository.py` | Repository tests with temporary SQLite database. |
 | Security and configuration | NFR-6 to NFR-14 | `config.py`, upload validation, API error handling | Env var test, rejected extension test, no-secret-response check. |
@@ -1150,7 +1170,7 @@ The deployment diagram shows the first local MVP environment. It separates the a
 
 ### B.15 API and Integration Swimlane Diagram
 
-This swimlane diagram shows the API and integration flow across the user/client, FastAPI backend, processing services, external tools and AI APIs, and local storage. The diagram is arranged by vertical request columns so upload, analysis, timeline retrieval, and question answering can be followed without crossing arrows.
+This swimlane diagram shows the API and integration flow across the user/client, FastAPI backend, processing services, external tools and provider APIs, and local storage. The diagram is arranged by vertical request columns so upload, analysis, timeline retrieval, and question answering can be followed without crossing arrows.
 
 ![API and Integration Swimlane Diagram](diagrams/api_integration_swimlane.png)
 

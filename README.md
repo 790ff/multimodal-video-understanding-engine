@@ -3,19 +3,18 @@
 Backend-centered MVP for turning uploaded videos into timestamped video memory:
 transcripts, keyframes, scene data, timeline events, and question-answerable evidence.
 
-This repository currently contains the M1 project scaffold from the Software Engineering Specification.
+This repository currently contains the backend pipeline through M5 from the Software Engineering Specification.
 
 ## Current Milestone
 
-M1: Project scaffold
+M5: Scene/window timeline builder
 
-- FastAPI application entry point
-- Central settings module
-- Layered package structure
-- Runtime data folders
-- Base schemas, domain errors, and status model
-- SQLAlchemy model scaffold
-- Starter tests
+- Upload and status endpoints
+- Audio extraction, keyframe extraction, and scene detection
+- Transcription and keyframe visual summaries through provider adapters
+- Scene/window timeline events with evidence links
+- SQLite persistence for video metadata and analysis outputs
+- Tests using fakes without real provider calls
 
 ## Requirements
 
@@ -74,6 +73,16 @@ Then open:
 - Swagger UI: http://127.0.0.1:8000/docs
 - Health check: http://127.0.0.1:8000/health
 
+## Analyze A Video
+
+1. Upload a video with `POST /videos/upload`.
+2. Run `POST /videos/{video_id}/analyze`.
+3. Read the generated timeline with `GET /videos/{video_id}/timeline`.
+
+The analyze response includes counts for transcript segments, keyframes, scenes, and
+timeline events. Timeline events include evidence references back to transcript
+segments, keyframes, and scenes.
+
 ## Run Tests
 
 ```bash
@@ -102,9 +111,9 @@ pytest
 ```text
 app/
   api/             FastAPI routers
-  adapters/        FFmpeg, OpenCV, scene detection, and AI API wrappers
+  adapters/        FFmpeg, OpenCV, scene detection, and provider wrappers
   db/              SQLAlchemy ORM models
-  domain/          Status values and controlled application errors
+  domain/          Status values, timeline data, and controlled application errors
   repositories/    Persistence access layer
   services/        Application workflow services
 data/
@@ -121,6 +130,6 @@ tests/             Automated tests
 - M2: Upload and metadata
 - M3: Media preprocessing
 - M4: Transcription and visual summaries
-- M5: Timeline builder
+- M5: Scene/window timeline builder
 - M6: Ask video
 - M7: Verification and release
