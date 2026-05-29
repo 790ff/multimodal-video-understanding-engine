@@ -8,8 +8,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.adapters.audio_extractor import AudioExtractionResult
+from app.adapters.frame_analyzer import FrameAnalysisResult
 from app.adapters.frame_extractor import ExtractedFrame
 from app.adapters.scene_detector import DetectedScene
+from app.adapters.transcriber import TranscriptSegmentData
 from app.api.videos import get_video_processor
 from app.config import get_settings
 from app.main import create_app
@@ -46,6 +48,16 @@ class FakeFrameExtractor:
         return frames
 
 
+class FailingFrameExtractor:
+    def extract(
+        self,
+        video_path: Path,
+        output_dir: Path,
+        sample_seconds: int,
+    ) -> list[ExtractedFrame]:
+        raise RuntimeError("frame extraction should have reused existing metadata")
+
+
 class FakeSceneDetector:
     def detect(self, video_path: Path) -> list[DetectedScene]:
         assert video_path.exists()
@@ -64,6 +76,26 @@ class FailingSceneDetector:
 class FailingAudioExtractor:
     def extract(self, video_path: Path, output_path: Path) -> AudioExtractionResult:
         raise RuntimeError("secret path /tmp/.env OPENAI_API_KEY=abc123")
+
+
+class FakeTranscriber:
+    def transcribe(self, audio_path: Path) -> list[TranscriptSegmentData]:
+        assert audio_path.read_bytes() == b"fake wav bytes"
+        return [
+            TranscriptSegmentData(start_time=0.0, end_time=1.5, text="Intro narration"),
+            TranscriptSegmentData(start_time=1.5, end_time=3.0, text="Action narration"),
+        ]
+
+
+class FakeFrameAnalyzer:
+    def analyze(self, frame_paths: list[Path]) -> list[FrameAnalysisResult]:
+        return [
+            FrameAnalysisResult(
+                frame_path=frame_path,
+                visual_summary=f"Visual summary for {frame_path.name}",
+            )
+            for frame_path in frame_paths
+        ]
 
 
 @pytest.fixture
@@ -186,6 +218,8 @@ def test_analyze_video_runs_preprocessing_and_persists_metadata(
         audio_extractor=FakeAudioExtractor(),
         frame_extractor=frame_extractor,
         scene_detector=FakeSceneDetector(),
+        transcriber=FakeTranscriber(),
+        frame_analyzer=FakeFrameAnalyzer(),
         settings=get_settings(),
     )
     client.app.dependency_overrides[get_video_processor] = lambda: processor
@@ -202,7 +236,7 @@ def test_analyze_video_runs_preprocessing_and_persists_metadata(
     assert response.json() == {
         "video_id": video_id,
         "status": "analyzed",
-        "transcript_segments": 0,
+        "transcript_segments": 2,
         "keyframes": 2,
         "scenes": 2,
         "timeline_events": 0,
@@ -219,20 +253,41 @@ def test_analyze_video_runs_preprocessing_and_persists_metadata(
             (video_id,),
         ).fetchone()
         keyframe_rows = connection.execute(
-            "select time, path from keyframes where video_id = ? order by time",
+            "select time, path, visual_summary from keyframes where video_id = ? order by time",
             (video_id,),
         ).fetchall()
         scene_rows = connection.execute(
             "select start_time, end_time from scenes where video_id = ? order by start_time",
             (video_id,),
         ).fetchall()
+        transcript_rows = connection.execute(
+            """
+            select start_time, end_time, text
+            from transcript_segments
+            where video_id = ?
+            order by start_time
+            """,
+            (video_id,),
+        ).fetchall()
 
     assert video_row == ("analyzed", None)
     assert keyframe_rows == [
-        (0.0, str(tmp_path / "frames" / video_id / "frame_000001.jpg")),
-        (3.0, str(tmp_path / "frames" / video_id / "frame_000002.jpg")),
+        (
+            0.0,
+            str(tmp_path / "frames" / video_id / "frame_000001.jpg"),
+            "Visual summary for frame_000001.jpg",
+        ),
+        (
+            3.0,
+            str(tmp_path / "frames" / video_id / "frame_000002.jpg"),
+            "Visual summary for frame_000002.jpg",
+        ),
     ]
     assert scene_rows == [(0.0, 2.5), (2.5, 5.0)]
+    assert transcript_rows == [
+        (0.0, 1.5, "Intro narration"),
+        (1.5, 3.0, "Action narration"),
+    ]
 
 
 def test_analyze_video_uses_fallback_scenes_when_scene_detection_fails(
@@ -243,6 +298,8 @@ def test_analyze_video_uses_fallback_scenes_when_scene_detection_fails(
         audio_extractor=FakeAudioExtractor(),
         frame_extractor=FakeFrameExtractor(),
         scene_detector=FailingSceneDetector(),
+        transcriber=FakeTranscriber(),
+        frame_analyzer=FakeFrameAnalyzer(),
         settings=get_settings(),
     )
     client.app.dependency_overrides[get_video_processor] = lambda: processor
@@ -259,7 +316,7 @@ def test_analyze_video_uses_fallback_scenes_when_scene_detection_fails(
     assert response.json() == {
         "video_id": video_id,
         "status": "analyzed",
-        "transcript_segments": 0,
+        "transcript_segments": 2,
         "keyframes": 2,
         "scenes": 2,
         "timeline_events": 0,
@@ -277,6 +334,65 @@ def test_analyze_video_uses_fallback_scenes_when_scene_detection_fails(
 
     assert video_row == ("analyzed", None)
     assert scene_rows == [(0.0, 3.0), (3.0, 6.0)]
+
+
+def test_analyze_video_reuses_existing_preprocessing_outputs(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    first_processor = VideoProcessor(
+        audio_extractor=FakeAudioExtractor(),
+        frame_extractor=FakeFrameExtractor(),
+        scene_detector=FakeSceneDetector(),
+        transcriber=FakeTranscriber(),
+        frame_analyzer=FakeFrameAnalyzer(),
+        settings=get_settings(),
+    )
+    client.app.dependency_overrides[get_video_processor] = lambda: first_processor
+
+    upload_response = client.post(
+        "/videos/upload",
+        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+    )
+    video_id = upload_response.json()["video_id"]
+
+    first_response = client.post(f"/videos/{video_id}/analyze")
+    assert first_response.status_code == 200
+
+    second_processor = VideoProcessor(
+        audio_extractor=FailingAudioExtractor(),
+        frame_extractor=FailingFrameExtractor(),
+        scene_detector=FakeSceneDetector(),
+        transcriber=FakeTranscriber(),
+        frame_analyzer=FakeFrameAnalyzer(),
+        settings=get_settings(),
+    )
+    client.app.dependency_overrides[get_video_processor] = lambda: second_processor
+
+    second_response = client.post(f"/videos/{video_id}/analyze")
+
+    assert second_response.status_code == 200
+    assert second_response.json() == {
+        "video_id": video_id,
+        "status": "analyzed",
+        "transcript_segments": 2,
+        "keyframes": 2,
+        "scenes": 2,
+        "timeline_events": 0,
+    }
+
+    with sqlite3.connect(tmp_path / "test_video_ai.sqlite3") as connection:
+        transcript_count = connection.execute(
+            "select count(*) from transcript_segments where video_id = ?",
+            (video_id,),
+        ).fetchone()[0]
+        keyframe_count = connection.execute(
+            "select count(*) from keyframes where video_id = ?",
+            (video_id,),
+        ).fetchone()[0]
+
+    assert transcript_count == 2
+    assert keyframe_count == 2
 
 
 def test_analyze_video_returns_404_for_missing_video(client: TestClient) -> None:
@@ -327,6 +443,8 @@ def test_analyze_video_failure_marks_video_failed_with_safe_message(
         audio_extractor=FailingAudioExtractor(),
         frame_extractor=FakeFrameExtractor(),
         scene_detector=FakeSceneDetector(),
+        transcriber=FakeTranscriber(),
+        frame_analyzer=FakeFrameAnalyzer(),
         settings=get_settings(),
     )
     client.app.dependency_overrides[get_video_processor] = lambda: processor
@@ -342,8 +460,8 @@ def test_analyze_video_failure_marks_video_failed_with_safe_message(
     assert response.status_code == 500
     assert response.json() == {
         "error": {
-            "code": "video_preprocessing_failed",
-            "message": "Video preprocessing failed.",
+            "code": "video_analysis_failed",
+            "message": "Video analysis failed.",
             "details": {},
         }
     }
@@ -353,5 +471,5 @@ def test_analyze_video_failure_marks_video_failed_with_safe_message(
     assert status_response.json() == {
         "video_id": video_id,
         "status": "failed",
-        "error_message": "Video preprocessing failed.",
+        "error_message": "Video analysis failed.",
     }
