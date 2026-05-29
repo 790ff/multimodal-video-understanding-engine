@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.videos import router as videos_router
@@ -28,6 +29,15 @@ def create_app() -> FastAPI:
         description="Backend API for the Multimodal Video Understanding Engine MVP.",
         lifespan=lifespan,
     )
+    allowed_cors_origins = settings.allowed_cors_origins
+    if allowed_cors_origins:
+        application.add_middleware(
+            CORSMiddleware,
+            allow_origins=allowed_cors_origins,
+            allow_credentials=False,
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["*"],
+        )
 
     @application.exception_handler(AppError)
     async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:

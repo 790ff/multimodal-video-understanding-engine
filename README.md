@@ -1,14 +1,16 @@
 # Multimodal Video Understanding Engine
 
-Backend MVP for turning uploaded videos into timestamped video memory:
-transcripts, keyframes, scene data, timeline events, and question-answerable evidence.
+Local product app and backend MVP for turning uploaded videos into timestamped
+video memory: transcripts, keyframes, scene data, timeline events, and
+question-answerable evidence.
 
-The repository is ready through M7 from the Software Engineering Specification.
-M7 is delivery readiness and verification infrastructure for the backend MVP. It
-does not add a user interface.
+The backend was ready through M7 from the Software Engineering Specification.
+M8 adds the first React/Vite product web app on top of the existing FastAPI
+backend.
 
-## Current Backend Scope
+## Current Product Scope
 
+- React/Vite local web app for upload, status, analysis, timeline, and ask
 - Upload and status endpoints
 - Audio extraction, keyframe extraction, and scene detection
 - Transcription and keyframe visual summaries through provider adapters
@@ -20,6 +22,7 @@ does not add a user interface.
 ## Requirements
 
 - Python 3.11 or newer
+- Node.js 20 or newer
 - FFmpeg installed locally for real video analysis
 - Provider API key for real transcription, frame summaries, and answer generation
 - Local filesystem access for `data/uploads`, `data/audio`, `data/frames`, and SQLite
@@ -35,9 +38,13 @@ source .venv/bin/activate
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
 cp .env.example .env
+cd frontend
+npm install
+cp .env.example .env.local
 ```
 
-Edit `.env` before running real analysis. Leave `.env` local; it is ignored by Git.
+Edit `.env` before running real analysis. Edit `frontend/.env.local` if the API
+uses a non-default port. Leave both local env files untracked.
 
 ## Model Provider Configuration
 
@@ -70,7 +77,7 @@ TRANSCRIPTION_MODEL="whisper-1"
 VISION_MODEL="gpt-4.1-mini"
 ```
 
-## Run The API
+## Run Locally
 
 ```bash
 uvicorn app.main:app --reload
@@ -81,24 +88,36 @@ Then open:
 - Swagger UI: http://127.0.0.1:8000/docs
 - Health check: http://127.0.0.1:8000/health
 
+In another terminal:
+
+```bash
+cd frontend
+npm run dev -- --host 127.0.0.1
+```
+
+Open the product app at http://127.0.0.1:5173.
+
 If port 8000 is busy, run with another port:
 
 ```bash
 uvicorn app.main:app --reload --port 8001
 ```
 
+Then set `VITE_API_BASE_URL="http://127.0.0.1:8001"` in
+`frontend/.env.local` and restart Vite.
+
 ## Manual Acceptance Checklist
 
 Use a short `.mp4` or `.mov` video for local verification.
 
-- [ ] Start the API server and open Swagger UI.
-- [ ] `POST /videos/upload` with a short video and save the returned `video_id`.
-- [ ] `GET /videos/{video_id}/status` returns `uploaded`.
-- [ ] `POST /videos/{video_id}/analyze` returns `analyzed` with transcript, keyframe, scene, and timeline counts.
-- [ ] `GET /videos/{video_id}/timeline` returns ordered timestamped events.
+- [ ] Start the API server and product web app.
+- [ ] Upload a short video from the web app.
+- [ ] Confirm status changes to `uploaded`.
+- [ ] Run analysis and confirm the result reaches `analyzed`.
+- [ ] Confirm timeline events render in timestamp order.
 - [ ] Timeline events include evidence references to transcript, frame, or scene records.
-- [ ] `POST /videos/{video_id}/ask` with a non-empty question returns an answer and timestamped evidence.
-- [ ] Repeat `POST /videos/{video_id}/ask` and confirm the video remains analyzed without rerunning upload or preprocessing.
+- [ ] Ask a non-empty question and confirm the answer includes timestamped evidence.
+- [ ] Repeat the ask request and confirm the video remains analyzed without rerunning upload or preprocessing.
 
 Example ask request:
 
@@ -110,12 +129,12 @@ Example ask request:
 
 ## Known Limitations
 
-- No React or custom web UI is included yet; Swagger UI is the local product interface for the backend.
 - No authentication, user accounts, roles, or multi-tenant isolation.
 - No background queue; analysis runs synchronously in the request process.
 - No ranking, embeddings, vector search, or deep mode. `/ask` uses stored evidence only.
 - No production storage layer; SQLite and local `data/` folders are for local MVP use.
 - No production deployment hardening such as HTTPS termination, cloud object storage, or worker scaling.
+- Timeline frame evidence displays local frame references; serving extracted frames in-browser is deferred.
 
 ## Troubleshooting
 
@@ -152,6 +171,11 @@ SQLite or local data reset:
 ```bash
 ruff check app tests
 pytest
+cd frontend
+npm run check
+npm run lint
+npm test
+npm run build
 ```
 
 ## Development Workflow
@@ -177,6 +201,12 @@ data/
   uploads/         Uploaded videos
   audio/           Extracted audio files
   frames/          Extracted keyframes
+frontend/
+  src/api/         Frontend API client and response types
+  src/components/  Product UI components
+  src/hooks/       Local workflow state
+  src/views/       Product workspace views
+  src/styles/      Application CSS
 docs/              Software engineering specification and diagrams
 tests/             Automated tests
 ```
@@ -190,3 +220,4 @@ tests/             Automated tests
 - M5: Scene/window timeline builder
 - M6: Ask video
 - M7: Delivery readiness and verification
+- M8: Product web app foundation
