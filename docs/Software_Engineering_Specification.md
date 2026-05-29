@@ -4,7 +4,7 @@ for
 
 # Multimodal Video Understanding Engine
 
-Version 0.4 Draft
+Version 0.5 Draft
 
 Prepared by Thamer
 
@@ -18,6 +18,7 @@ Date: 2026-05-29
 | Thamer | 2026-05-28 | Consolidated requirements, design, architecture, and analysis diagrams into one software engineering specification | 0.2 |
 | Thamer | 2026-05-29 | Added provider configuration, scene/window timeline synthesis, timeline retrieval, and evidence-link storage updates | 0.3 |
 | Thamer | 2026-05-29 | Added ask-video retrieval, replaceable answer provider, stored-evidence limits, and M6 API/testing details | 0.4 |
+| Thamer | 2026-05-29 | Added M7 delivery readiness, manual acceptance checklist, known limitations, local troubleshooting, and runtime artifact controls | 0.5 |
 
 ## Table of Contents
 
@@ -36,6 +37,8 @@ This part presents the SRS content for the project. It defines the product scope
 This Software Engineering Specification defines the requirements, architecture, software design, data design, testing strategy, and release plan for the first MVP release of the Multimodal Video Understanding Engine. The system allows a user to upload a video, preprocess it into audio transcript segments and key visual frames, build a timestamped timeline, and ask natural-language questions about the uploaded video.
 
 The scope of this document is the backend-centered MVP. It covers video upload, preprocessing, transcription, frame extraction, scene detection, visual analysis, timeline generation, basic video question answering, local metadata storage, software architecture, module boundaries, API contracts, database design, and testing expectations. It does not cover custom model training, production authentication, real-time video streaming, or large-scale distributed processing.
+
+For M7, this document also covers delivery readiness for the backend MVP: repeatable local setup, environment documentation, manual acceptance testing, known limitations, troubleshooting guidance, and verification commands. M7 does not introduce a React interface, new retrieval architecture, background queue, authentication layer, or production storage system.
 
 ### 1.2 Document Conventions
 
@@ -158,6 +161,9 @@ The MVP should include:
 - API endpoint documentation through FastAPI Swagger UI.
 - Sample workflow for uploading and analyzing a short video.
 - Testing instructions.
+- Manual acceptance checklist covering upload, analyze, timeline, and ask.
+- Known limitations for the backend MVP release.
+- Local troubleshooting notes for port conflicts, FFmpeg, provider keys, and SQLite/local data.
 
 ### 2.7 Assumptions and Dependencies
 
@@ -362,7 +368,7 @@ The system shall store metadata and analysis results so the same video does not 
 - NFR-10: API keys shall be loaded from environment variables and shall not be committed to source control.
 - NFR-11: Uploaded videos and extracted assets shall not be publicly exposed in the MVP unless explicitly served through controlled endpoints.
 - NFR-12: The system shall avoid logging sensitive API keys or full external service credentials.
-- NFR-13: A maximum upload size shall be defined before deployment. See TBD-2.
+- NFR-13: A maximum upload size shall be defined before deployment. The local MVP default is 250 MB.
 - NFR-14: Production deployment shall use HTTPS.
 
 ### 5.4 Software Quality Attributes
@@ -388,6 +394,9 @@ The system shall store metadata and analysis results so the same video does not 
 - OR-3: The project shall include a simple test strategy before implementation is considered complete.
 - OR-4: The project should be prepared for GitHub release with a clear repository structure.
 - OR-5: Docker support is optional for the first release and may be added after the local MVP works.
+- OR-6: The project shall include a manual acceptance checklist for the backend MVP workflow.
+- OR-7: The project shall document known limitations and local troubleshooting before delivery.
+- OR-8: Local secrets, SQLite databases, uploaded media, extracted audio, and extracted frames shall remain out of source control.
 
 ## Part II. Software Architecture
 
@@ -650,6 +659,9 @@ Configuration should be loaded from environment variables through one central se
 
 | Variable | Purpose | Default |
 |---|---|---|
+| `APP_NAME` | FastAPI application name shown in health and OpenAPI metadata. | `Multimodal Video Understanding Engine` |
+| `APP_VERSION` | Application version shown in health and OpenAPI metadata. | `0.1.0` |
+| `ENVIRONMENT` | Local environment label returned by the health endpoint. | `development` |
 | `MODEL_PROVIDER` | Default provider used by model-backed adapters. | `openai` |
 | `TRANSCRIPTION_PROVIDER_ORDER` | Optional comma-separated transcription fallback order. | Empty |
 | `FRAME_ANALYSIS_PROVIDER` | Optional provider override for frame summaries. | Empty |
@@ -663,7 +675,11 @@ Configuration should be loaded from environment variables through one central se
 | `AUDIO_DIR` | Extracted audio directory. | `data/audio` |
 | `FRAME_DIR` | Extracted frame directory. | `data/frames` |
 | `FRAME_SAMPLE_SECONDS` | Frame sampling interval. | `2` |
-| `MAX_UPLOAD_MB` | Maximum upload size. | TBD |
+| `MAX_UPLOAD_MB` | Maximum upload size for local MVP uploads. | `250` |
+| `ALLOWED_VIDEO_EXTENSIONS` | Comma-separated list of accepted video extensions. | `mp4,mov` |
+
+The `.env.example` file shall list every runtime setting without real secrets.
+Local `.env` files are developer-specific and must not be committed.
 
 ## 9. Data Design
 
@@ -958,7 +974,7 @@ The `code` field should be stable enough for a future frontend to handle. The `m
 - `video_id` should be a UUID string generated by the backend.
 - Uploaded filenames should never be trusted as storage paths.
 - MVP file types are `mp4` and `mov`.
-- Maximum upload size remains TBD until the demonstration target is confirmed.
+- Maximum upload size defaults to 250 MB for the local MVP and can be adjusted through `MAX_UPLOAD_MB`.
 - The first MVP should target short videos up to 2 minutes for predictable cost and processing time.
 
 ## Part IV. Verification, Release, and Supporting Models
@@ -999,15 +1015,36 @@ Integration tests should cover:
 
 ### 11.3 Manual Acceptance Test
 
-The MVP is acceptable when a reviewer can:
+The backend MVP is acceptable when a reviewer can complete the following workflow
+with a short `.mp4` or `.mov` video through Swagger UI:
 
-1. Start the API server.
-2. Open Swagger UI.
-3. Upload a short mp4 video.
-4. Run analysis.
-5. View timestamped timeline events.
-6. Ask a question and receive an answer with evidence timestamps.
-7. Repeat a question without forcing full video reprocessing.
+- Start the API server with `uvicorn app.main:app --reload`.
+- Open `http://127.0.0.1:8000/docs`.
+- Upload a video through `POST /videos/upload` and record the returned `video_id`.
+- Confirm `GET /videos/{video_id}/status` returns `uploaded`.
+- Run `POST /videos/{video_id}/analyze`.
+- Confirm the analyze response returns `analyzed` plus transcript, keyframe, scene, and timeline counts.
+- Confirm `GET /videos/{video_id}/timeline` returns ordered timestamped timeline events.
+- Confirm timeline events include evidence references to stored transcript, frame, or scene records.
+- Ask a non-empty question through `POST /videos/{video_id}/ask`.
+- Confirm the ask response includes an answer and timestamped evidence.
+- Repeat the ask request and confirm the video remains analyzed without requiring upload or preprocessing to run again.
+
+Manual acceptance requires a configured provider key and FFmpeg installed locally.
+If the workflow fails, the reviewer should use the troubleshooting guidance in
+Section 12.5 before treating the release as blocked.
+
+### 11.4 M7 Automated Verification
+
+M7 delivery readiness requires these local checks before opening or merging a pull request:
+
+```bash
+ruff check app tests
+pytest
+```
+
+The automated tests must use fake providers or local test doubles. They must not
+call external provider APIs or require real provider credentials.
 
 ## 12. Implementation and Release Plan
 
@@ -1021,7 +1058,7 @@ The MVP is acceptable when a reviewer can:
 | M4: Transcription and visual summaries | Transcription adapter, frame analyzer adapter, fake clients for tests. |
 | M5: Scene/window timeline builder | Stored transcript, frames, scenes, visual summaries, timeline events, and evidence links. |
 | M6: Ask video | Question endpoint, evidence retrieval, answer generation, timestamped evidence. |
-| M7: Verification and release | Tests, README workflow, GitHub-ready repository state. |
+| M7: Delivery readiness and verification | README workflow, `.env.example` coverage, manual acceptance checklist, known limitations, troubleshooting, runtime artifact controls, and local checks. |
 
 ### 12.2 Release Scope
 
@@ -1046,6 +1083,10 @@ Deferred from the first MVP:
 - Embedding-based semantic search.
 - Custom model training.
 
+M7 is a release-readiness milestone for the backend. It does not add UI screens,
+new public endpoints, ranking, embeddings, vector search, background processing,
+or production deployment architecture.
+
 ### 12.3 GitHub Release Readiness
 
 Before the first GitHub release, the repository should include:
@@ -1057,6 +1098,33 @@ Before the first GitHub release, the repository should include:
 - Documented API workflow.
 - Project structure matching this specification.
 - A short note explaining that the project is a pipeline-based video understanding engine, not a custom-trained model.
+- Manual acceptance checklist for upload, analyze, timeline, and ask.
+- Known limitations for the backend MVP.
+- Troubleshooting for local setup failures.
+- `.gitignore` rules that exclude local `.env`, SQLite databases, uploaded media, extracted audio, and extracted frames.
+
+### 12.4 Known Limitations
+
+The M7 backend MVP has the following known limitations:
+
+- No custom web UI is included. Swagger UI is the reviewer-facing interface for the MVP.
+- No authentication, authorization, user accounts, or multi-tenant data isolation.
+- No background queue. Analysis runs synchronously in the API process.
+- No ranking, embeddings, vector search, or deep retrieval mode. Question answering uses stored evidence only.
+- No production storage layer. SQLite and local `data/` folders are intended for local MVP verification.
+- No production deployment hardening such as HTTPS termination, cloud storage, worker scaling, monitoring, or backup policy.
+
+### 12.5 Local Troubleshooting
+
+Common local issues and expected responses:
+
+| Issue | Check | Resolution |
+|---|---|---|
+| Port 8000 already in use | Uvicorn cannot bind to `127.0.0.1:8000`. | Run `uvicorn app.main:app --reload --port 8001` or stop the process using port 8000. |
+| FFmpeg missing | `ffmpeg -version` fails. | Install FFmpeg locally, then rerun analysis. |
+| Provider key missing | Analysis fails when provider-backed transcription or frame analysis starts. | Set the matching provider key in local `.env`, restart Uvicorn, and retry analysis. |
+| SQLite or local data confusion | Old uploads, frames, audio, or database records affect a manual run. | Stop the server, clear local runtime files under `data/` as needed, keep `.gitkeep` files, then restart. |
+| `.env` changes not taking effect | Server still uses old settings. | Restart Uvicorn after editing `.env`. |
 
 ## 13. Traceability Matrix
 
@@ -1075,7 +1143,7 @@ This matrix connects requirements to implementation modules and planned verifica
 | Video question answering | FR-22 to FR-28a | `question_answerer.py`, evidence retrieval methods, `/videos/{video_id}/ask` | Success, missing video, not analyzed, empty question, insufficient evidence, and timestamped evidence tests. |
 | Storage and retrieval | FR-29 to FR-35, NFR-19 | `db/models.py`, `video_repository.py` | Repository tests with temporary SQLite database. |
 | Security and configuration | NFR-6 to NFR-14 | `config.py`, upload validation, API error handling | Env var test, rejected extension test, no-secret-response check. |
-| Release readiness | OR-1 to OR-5 | README, `.env.example`, test suite | Manual acceptance checklist and GitHub readiness review. |
+| Release readiness | OR-1 to OR-8 | README, `.env.example`, `.gitignore`, test suite, software engineering specification | Manual acceptance checklist, runtime artifact review, `ruff check app tests`, and `pytest`. |
 
 ## Appendix A: Glossary
 
@@ -1232,8 +1300,8 @@ This swimlane diagram shows the API and integration flow across the user/client,
 | ID | Item |
 |---|---|
 | TBD-1 | Confirm exact external API models, versions, and documentation references before implementation. |
-| TBD-2 | Define maximum upload size for the MVP and future deployment. |
-| TBD-3 | Confirm whether the course requires a web frontend in addition to Swagger UI. |
+| TBD-2 | Review whether the 250 MB local MVP upload limit should change for any future hosted deployment. |
+| TBD-3 | Confirm scope and timing for a future web frontend milestone after the backend MVP. |
 | TBD-4 | Confirm final database choice for the MVP: SQLite or PostgreSQL. |
 | TBD-5 | Confirm expected video duration and resolution limits for demonstration. |
 | TBD-6 | Confirm final project team/member details for the specification cover page if required by the course. |
