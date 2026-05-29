@@ -4,10 +4,18 @@ from collections.abc import Iterable
 from typing import Optional
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
-from app.db.models import KeyframeModel, SceneModel, TranscriptSegmentModel, VideoModel
+from app.db.models import (
+    EvidenceLinkModel,
+    KeyframeModel,
+    SceneModel,
+    TimelineEventModel,
+    TranscriptSegmentModel,
+    VideoModel,
+)
 from app.domain.status import VideoStatus
+from app.domain.timeline import TimelineEventData
 
 
 class VideoRepository:
@@ -49,6 +57,7 @@ class VideoRepository:
         video.transcript_segments.clear()
         video.keyframes.clear()
         video.scenes.clear()
+        video.timeline_events.clear()
         self.session.flush()
 
     def list_keyframes(self, video: VideoModel) -> list[KeyframeModel]:
@@ -64,6 +73,23 @@ class VideoRepository:
             select(SceneModel)
             .where(SceneModel.video_id == video.id)
             .order_by(SceneModel.start_time)
+        )
+        return list(self.session.scalars(statement))
+
+    def list_transcript_segments(self, video: VideoModel) -> list[TranscriptSegmentModel]:
+        statement = (
+            select(TranscriptSegmentModel)
+            .where(TranscriptSegmentModel.video_id == video.id)
+            .order_by(TranscriptSegmentModel.start_time)
+        )
+        return list(self.session.scalars(statement))
+
+    def list_timeline_events(self, video: VideoModel) -> list[TimelineEventModel]:
+        statement = (
+            select(TimelineEventModel)
+            .options(selectinload(TimelineEventModel.evidence_links))
+            .where(TimelineEventModel.video_id == video.id)
+            .order_by(TimelineEventModel.start_time)
         )
         return list(self.session.scalars(statement))
 
@@ -148,3 +174,31 @@ class VideoRepository:
             updated += 1
         self.session.flush()
         return updated
+
+    def replace_timeline_events(
+        self,
+        video: VideoModel,
+        events: Iterable[TimelineEventData],
+    ) -> list[TimelineEventModel]:
+        video.timeline_events.clear()
+        self.session.flush()
+
+        models = []
+        for event in events:
+            model = TimelineEventModel(
+                video_id=video.id,
+                start_time=event.start_time,
+                end_time=event.end_time,
+                summary=event.summary,
+            )
+            model.evidence_links.extend(
+                EvidenceLinkModel(
+                    evidence_type=evidence.evidence_type,
+                    evidence_id=evidence.evidence_id,
+                )
+                for evidence in event.evidence
+            )
+            models.append(model)
+        video.timeline_events.extend(models)
+        self.session.flush()
+        return models

@@ -237,7 +237,7 @@ def context() -> None:
 
     d.box((120, 300, 450, 440), "User", COLORS["white"])
     d.box((120, 585, 450, 735), "Swagger UI /\nFuture Web UI", COLORS["white"])
-    d.box((1510, 235, 1880, 385), "OpenAI APIs", COLORS["white"])
+    d.box((1510, 235, 1880, 385), "Model Provider\nAPIs", COLORS["white"])
     d.box((1510, 475, 1880, 625), "FFmpeg / OpenCV /\nPySceneDetect", COLORS["white"])
     d.box((1510, 715, 1880, 865), "Local Files\nand SQLite", COLORS["white"])
 
@@ -267,7 +267,7 @@ def dfd() -> None:
         ((1265, 190, 1585, 300), "3. Transcribe\nAudio"),
         ((830, 600, 1130, 710), "4. Extract\nKeyframes"),
         ((1265, 600, 1585, 710), "5. Detect\nScenes"),
-        ((1700, 385, 2050, 510), "6. Build\nTimeline"),
+        ((1700, 385, 2050, 510), "6. Build Scene\nTimeline"),
         ((1700, 850, 2050, 970), "7. Ask Video\nQuestion"),
     ]
     for xy, label in processes:
@@ -319,7 +319,7 @@ def pipeline() -> None:
         (1000, 440, "Sample\nKeyframes"),
         (1300, 440, "Analyze Selected\nFrames"),
         (1000, 730, "Detect\nScenes"),
-        (1640, 440, "Build\nTimeline"),
+        (1640, 440, "Build Scene\nTimeline"),
         (1880, 440, "Store Video\nMemory"),
         (1880, 750, "Answer User\nQuestions"),
     ]
@@ -579,8 +579,8 @@ def component() -> None:
         "FFmpeg",
         "OpenCV",
         "PySceneDetect",
-        "OpenAI transcription",
-        "Vision-language model",
+        "Provider transcription",
+        "Vision-language provider",
         "Local file system",
     ])
 
@@ -632,7 +632,7 @@ def api_integration_swimlane() -> None:
         ("User / API Client", top, top + lane_h),
         ("FastAPI Backend", top + lane_h, top + lane_h * 2),
         ("Processing Services", top + lane_h * 2, top + lane_h * 3),
-        ("External Tools / AI APIs", top + lane_h * 3, top + lane_h * 4),
+        ("External Tools / Model APIs", top + lane_h * 3, top + lane_h * 4),
         ("SQLite + Local Files", top + lane_h * 4, top + lane_h * 5),
     ]
 
@@ -677,8 +677,8 @@ def api_integration_swimlane() -> None:
 
     d.box((875, external_y - 48, 1095, external_y + 48), "FFmpeg\nAudio", COLORS["white"], outline=COLORS["line"], radius=12, fnt=SMALL_BOLD)
     d.box((1140, external_y - 48, 1410, external_y + 48), "OpenCV /\nPySceneDetect", COLORS["white"], outline=COLORS["line"], radius=12, fnt=SMALL_BOLD)
-    d.box((1455, external_y - 48, 1705, external_y + 48), "OpenAI\nTranscription", COLORS["white"], outline=COLORS["line"], radius=12, fnt=SMALL_BOLD)
-    d.box((1760, external_y - 48, 2060, external_y + 48), "Vision /\nLanguage Model", COLORS["white"], outline=COLORS["line"], radius=12, fnt=SMALL_BOLD)
+    d.box((1455, external_y - 48, 1705, external_y + 48), "Provider\nTranscription", COLORS["white"], outline=COLORS["line"], radius=12, fnt=SMALL_BOLD)
+    d.box((1760, external_y - 48, 2060, external_y + 48), "Vision /\nLanguage Provider", COLORS["white"], outline=COLORS["line"], radius=12, fnt=SMALL_BOLD)
 
     d.box((380, storage_y - 48, 650, storage_y + 48), "Store Uploaded\nVideo File", COLORS["gray"], outline=COLORS["line"], radius=12, fnt=SMALL_BOLD)
     d.box((705, storage_y - 48, 970, storage_y + 48), "Store Video\nMetadata", COLORS["gray"], outline=COLORS["line"], radius=12, fnt=SMALL_BOLD)

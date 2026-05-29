@@ -87,6 +87,14 @@ class FakeTranscriber:
         ]
 
 
+class FakeUntimedTranscriber:
+    def transcribe(self, audio_path: Path) -> list[TranscriptSegmentData]:
+        assert audio_path.read_bytes() == b"fake wav bytes"
+        return [
+            TranscriptSegmentData(start_time=0.0, end_time=0.0, text="Untimed narration"),
+        ]
+
+
 class FakeFrameAnalyzer:
     def analyze(self, frame_paths: list[Path]) -> list[FrameAnalysisResult]:
         return [
@@ -209,6 +217,38 @@ def test_get_video_status_returns_404_for_missing_video(client: TestClient) -> N
     }
 
 
+def test_get_video_timeline_returns_404_for_missing_video(client: TestClient) -> None:
+    response = client.get("/videos/00000000-0000-0000-0000-000000000000/timeline")
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "error": {
+            "code": "video_not_found",
+            "message": "Video was not found.",
+            "details": {},
+        }
+    }
+
+
+def test_get_video_timeline_returns_409_before_analysis(client: TestClient) -> None:
+    upload_response = client.post(
+        "/videos/upload",
+        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+    )
+    video_id = upload_response.json()["video_id"]
+
+    response = client.get(f"/videos/{video_id}/timeline")
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "error": {
+            "code": "video_not_analyzed",
+            "message": "Video has not been analyzed.",
+            "details": {},
+        }
+    }
+
+
 def test_analyze_video_runs_preprocessing_and_persists_metadata(
     client: TestClient,
     tmp_path: Path,
@@ -239,7 +279,7 @@ def test_analyze_video_runs_preprocessing_and_persists_metadata(
         "transcript_segments": 2,
         "keyframes": 2,
         "scenes": 2,
-        "timeline_events": 0,
+        "timeline_events": 2,
     }
     assert frame_extractor.sample_seconds == 3
     audio_path = tmp_path / "audio" / video_id / "audio.wav"
@@ -269,6 +309,24 @@ def test_analyze_video_runs_preprocessing_and_persists_metadata(
             """,
             (video_id,),
         ).fetchall()
+        timeline_rows = connection.execute(
+            """
+            select start_time, end_time, summary
+            from timeline_events
+            where video_id = ?
+            order by start_time
+            """,
+            (video_id,),
+        ).fetchall()
+        evidence_link_count = connection.execute(
+            """
+            select count(*)
+            from evidence_links
+            join timeline_events on timeline_events.id = evidence_links.timeline_event_id
+            where timeline_events.video_id = ?
+            """,
+            (video_id,),
+        ).fetchone()[0]
 
     assert video_row == ("analyzed", None)
     assert keyframe_rows == [
@@ -288,6 +346,115 @@ def test_analyze_video_runs_preprocessing_and_persists_metadata(
         (0.0, 1.5, "Intro narration"),
         (1.5, 3.0, "Action narration"),
     ]
+    assert timeline_rows == [
+        (
+            0.0,
+            2.5,
+            "Speech: Intro narration Action narration Visual: Visual summary for frame_000001.jpg",
+        ),
+        (
+            2.5,
+            5.0,
+            "Speech: Action narration Visual: Visual summary for frame_000002.jpg",
+        ),
+    ]
+    assert evidence_link_count == 7
+
+
+def test_get_video_timeline_returns_ordered_events_with_evidence(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    processor = VideoProcessor(
+        audio_extractor=FakeAudioExtractor(),
+        frame_extractor=FakeFrameExtractor(),
+        scene_detector=FakeSceneDetector(),
+        transcriber=FakeTranscriber(),
+        frame_analyzer=FakeFrameAnalyzer(),
+        settings=get_settings(),
+    )
+    client.app.dependency_overrides[get_video_processor] = lambda: processor
+
+    upload_response = client.post(
+        "/videos/upload",
+        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+    )
+    video_id = upload_response.json()["video_id"]
+    analyze_response = client.post(f"/videos/{video_id}/analyze")
+    assert analyze_response.status_code == 200
+
+    response = client.get(f"/videos/{video_id}/timeline")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "video_id": video_id,
+        "events": [
+            {
+                "start_time": 0.0,
+                "end_time": 2.5,
+                "summary": (
+                    "Speech: Intro narration Action narration Visual: "
+                    "Visual summary for frame_000001.jpg"
+                ),
+                "evidence": [
+                    {"type": "scene", "start_time": 0.0, "end_time": 2.5},
+                    {"type": "transcript", "start_time": 0.0, "end_time": 1.5},
+                    {"type": "transcript", "start_time": 1.5, "end_time": 3.0},
+                    {
+                        "type": "frame",
+                        "time": 0.0,
+                        "path": str(tmp_path / "frames" / video_id / "frame_000001.jpg"),
+                    },
+                ],
+            },
+            {
+                "start_time": 2.5,
+                "end_time": 5.0,
+                "summary": "Speech: Action narration Visual: Visual summary for frame_000002.jpg",
+                "evidence": [
+                    {"type": "scene", "start_time": 2.5, "end_time": 5.0},
+                    {"type": "transcript", "start_time": 1.5, "end_time": 3.0},
+                    {
+                        "type": "frame",
+                        "time": 3.0,
+                        "path": str(tmp_path / "frames" / video_id / "frame_000002.jpg"),
+                    },
+                ],
+            },
+        ],
+    }
+
+
+def test_analyze_video_keeps_untimed_transcript_in_timeline(
+    client: TestClient,
+) -> None:
+    processor = VideoProcessor(
+        audio_extractor=FakeAudioExtractor(),
+        frame_extractor=FakeFrameExtractor(),
+        scene_detector=FakeSceneDetector(),
+        transcriber=FakeUntimedTranscriber(),
+        frame_analyzer=FakeFrameAnalyzer(),
+        settings=get_settings(),
+    )
+    client.app.dependency_overrides[get_video_processor] = lambda: processor
+
+    upload_response = client.post(
+        "/videos/upload",
+        files={"file": ("demo.mp4", b"fake mp4 bytes", "video/mp4")},
+    )
+    video_id = upload_response.json()["video_id"]
+    analyze_response = client.post(f"/videos/{video_id}/analyze")
+    assert analyze_response.status_code == 200
+
+    timeline_response = client.get(f"/videos/{video_id}/timeline")
+
+    first_event = timeline_response.json()["events"][0]
+    assert "Untimed narration" in first_event["summary"]
+    assert {
+        "type": "transcript",
+        "start_time": 0.0,
+        "end_time": 0.0,
+    } in first_event["evidence"]
 
 
 def test_analyze_video_uses_fallback_scenes_when_scene_detection_fails(
@@ -319,7 +486,7 @@ def test_analyze_video_uses_fallback_scenes_when_scene_detection_fails(
         "transcript_segments": 2,
         "keyframes": 2,
         "scenes": 2,
-        "timeline_events": 0,
+        "timeline_events": 2,
     }
 
     with sqlite3.connect(tmp_path / "test_video_ai.sqlite3") as connection:
@@ -378,7 +545,7 @@ def test_analyze_video_reuses_existing_preprocessing_outputs(
         "transcript_segments": 2,
         "keyframes": 2,
         "scenes": 2,
-        "timeline_events": 0,
+        "timeline_events": 2,
     }
 
     with sqlite3.connect(tmp_path / "test_video_ai.sqlite3") as connection:

@@ -19,6 +19,7 @@ from app.config import Settings, get_settings
 from app.domain.errors import ConflictAppError, NotFoundAppError, ProcessingAppError
 from app.domain.status import VideoStatus
 from app.repositories.video_repository import VideoRepository
+from app.services.timeline_builder import TimelineBuilder
 
 SAFE_ANALYSIS_ERROR_MESSAGE = "Video analysis failed."
 
@@ -42,6 +43,7 @@ class VideoProcessor:
         scene_detector: Optional[SceneDetector] = None,
         transcriber: Optional[Transcriber | GeminiTranscriber | FallbackTranscriber] = None,
         frame_analyzer: Optional[FrameAnalyzer | GeminiFrameAnalyzer] = None,
+        timeline_builder: Optional[TimelineBuilder] = None,
         settings: Optional[Settings] = None,
     ) -> None:
         self.settings = settings or get_settings()
@@ -50,6 +52,7 @@ class VideoProcessor:
         self.scene_detector = scene_detector or SceneDetector()
         self.transcriber = transcriber or create_transcriber(self.settings)
         self.frame_analyzer = frame_analyzer or create_frame_analyzer(self.settings)
+        self.timeline_builder = timeline_builder or TimelineBuilder()
 
     def analyze(self, video_id: str, repository: VideoRepository) -> AnalysisResult:
         video = repository.get(video_id)
@@ -113,6 +116,7 @@ class VideoProcessor:
                 frame_summaries=frame_summaries,
                 repository=repository,
             )
+            timeline_result = self.timeline_builder.build(video=video, repository=repository)
             repository.set_status(video, VideoStatus.ANALYZED, error_message=None)
             repository.session.commit()
 
@@ -122,7 +126,7 @@ class VideoProcessor:
                 transcript_segments=len(transcript_segments),
                 keyframes=len(keyframes),
                 scenes=len(scenes),
-                timeline_events=0,
+                timeline_events=timeline_result.events,
             )
         except Exception as exc:
             self._mark_failed(video_id=video_id, repository=repository)
