@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.videos import router as videos_router
 from app.config import ensure_runtime_dirs, get_settings
+from app.database import init_db
 from app.domain.errors import AppError
 from app.schemas import HealthResponse
 
@@ -15,6 +16,7 @@ from app.schemas import HealthResponse
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     ensure_runtime_dirs()
+    init_db()
     yield
 
 

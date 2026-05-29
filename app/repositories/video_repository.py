@@ -15,8 +15,18 @@ class VideoRepository:
     def get(self, video_id: str) -> Optional[VideoModel]:
         return self.session.get(VideoModel, video_id)
 
-    def create(self, *, original_filename: str, stored_path: str) -> VideoModel:
-        video = VideoModel(original_filename=original_filename, stored_path=stored_path)
+    def create(
+        self,
+        *,
+        video_id: str,
+        original_filename: str,
+        stored_path: str,
+    ) -> VideoModel:
+        video = VideoModel(
+            id=video_id,
+            original_filename=original_filename,
+            stored_path=stored_path,
+        )
         self.session.add(video)
         self.session.flush()
         return video
