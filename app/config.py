@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     transcription_model: str = Field(default="whisper-1", alias="TRANSCRIPTION_MODEL")
     vision_model: str = Field(default="gpt-4.1-mini", alias="VISION_MODEL")
     gemini_model: str = Field(default="gemini-3.5-flash", alias="GEMINI_MODEL")
+    cors_allowed_origins: str = Field(
+        default="http://127.0.0.1:5173,http://localhost:5173",
+        alias="CORS_ALLOWED_ORIGINS",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -70,6 +74,14 @@ class Settings(BaseSettings):
             if self.frame_analysis_provider
             else self.active_model_provider
         )
+
+    @property
+    def allowed_cors_origins(self) -> list[str]:
+        return [
+            origin.strip()
+            for origin in self.cors_allowed_origins.split(",")
+            if origin.strip()
+        ]
 
     def _provider_list(self, providers: Optional[str]) -> list[str]:
         if not providers:
