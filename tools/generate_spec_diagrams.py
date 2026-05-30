@@ -527,7 +527,7 @@ def state_diagram() -> None:
 
 
 def component() -> None:
-    d = Diagram("Component Diagram", 2400, 1660)
+    d = Diagram("Component Diagram", 2400, 2100)
 
     def group(xy, title: str, items: list[str], cols: int = 2):
         x1, y1, x2, y2 = xy
@@ -535,27 +535,36 @@ def component() -> None:
         d.text((x1 + 24, y1 + 20, x2 - 24, y1 + 72), title, SUBTITLE, align="left")
         item_w = (x2 - x1 - 80 - (cols - 1) * 26) // cols
         item_h = 66
+        row_count = math.ceil(len(items) / cols)
+        min_row_gap = 20
+        content_top = y1 + 105
+        content_bottom = y2 - 32
+        required_height = 105 + row_count * item_h + max(0, row_count - 1) * min_row_gap + 32
+        if y2 - y1 < required_height:
+            raise ValueError(f"{title} group is too short for its subcomponents")
+        available_gap = 0 if row_count == 1 else (content_bottom - content_top - row_count * item_h) // (row_count - 1)
+        row_gap = max(min_row_gap, available_gap)
         for idx, item in enumerate(items):
             col = idx % cols
             row = idx // cols
             bx1 = x1 + 40 + col * (item_w + 26)
-            by1 = y1 + 105 + row * 92
+            by1 = content_top + row * (item_h + row_gap)
             d.box((bx1, by1, bx1 + item_w, by1 + item_h), item, COLORS["gray"], fnt=SMALL_BOLD, radius=12)
 
-    group((120, 160, 2280, 350), "Frontend Layer", [
+    group((120, 150, 2280, 355), "Frontend Layer", [
         "React views",
         "API client",
         "workflow hook",
         "product components",
         "styles and tests",
     ], cols=5)
-    group((120, 430, 1120, 680), "API Layer", [
+    group((120, 455, 1120, 760), "API Layer", [
         "videos.py routes",
         "Pydantic schemas",
         "error response mapper",
         "request validation",
     ])
-    group((120, 760, 1120, 1065), "Application Services", [
+    group((120, 850, 1120, 1245), "Application Services", [
         "video_storage.py",
         "video_processor.py",
         "timeline_builder.py",
@@ -563,19 +572,19 @@ def component() -> None:
         "status workflow",
         "evidence retrieval",
     ])
-    group((120, 1145, 1120, 1325), "Domain Layer", [
+    group((120, 1335, 1120, 1640), "Domain Layer", [
         "entities.py",
         "statuses.py",
         "errors.py",
         "evidence types",
     ])
-    group((120, 1395, 1120, 1585), "Persistence Layer", [
+    group((120, 1730, 1120, 2035), "Persistence Layer", [
         "video_repository.py",
         "db/models.py",
         "SQLite metadata",
         "migration-ready schema",
-    ], cols=4)
-    group((1300, 760, 2280, 1120), "Infrastructure Adapters", [
+    ])
+    group((1300, 850, 2280, 1245), "Infrastructure Adapters", [
         "audio_extractor.py",
         "transcriber.py",
         "frame_extractor.py",
@@ -583,7 +592,7 @@ def component() -> None:
         "frame_analyzer.py",
         "file storage adapter",
     ])
-    group((1300, 1210, 2280, 1585), "External Tools and APIs", [
+    group((1300, 1335, 2280, 1720), "External Tools and APIs", [
         "FFmpeg",
         "OpenCV",
         "PySceneDetect",
@@ -592,13 +601,13 @@ def component() -> None:
         "Local file system",
     ])
 
-    d.arrow((620, 350), (620, 430), label="HTTP calls")
-    d.arrow((620, 680), (620, 760), label="calls services")
-    d.arrow((620, 1065), (620, 1145), label="uses domain model")
-    d.arrow((620, 1325), (620, 1395), label="persists through repository")
-    d.arrow((1120, 910), (1300, 910), label="uses adapters")
-    d.arrow((1790, 1120), (1790, 1210), label="wraps")
-    d.orthogonal_arrow([(1300, 1490), (1215, 1490), (1215, 1495), (1120, 1495)], label="file paths and metadata")
+    d.arrow((620, 355), (620, 455), label="HTTP calls")
+    d.arrow((620, 760), (620, 850), label="calls services")
+    d.arrow((620, 1245), (620, 1335), label="uses domain model")
+    d.arrow((620, 1640), (620, 1730), label="persists through repository")
+    d.arrow((1120, 1048), (1300, 1048), label="uses adapters")
+    d.arrow((1790, 1245), (1790, 1335), label="wraps")
+    d.orthogonal_arrow([(1300, 1500), (1215, 1500), (1215, 1822), (1120, 1822)], label="file paths and metadata")
     d.save("component_diagram.png")
 
 
