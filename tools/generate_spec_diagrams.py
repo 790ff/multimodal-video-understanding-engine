@@ -528,6 +528,13 @@ def state_diagram() -> None:
 
 def component() -> None:
     d = Diagram("Component Diagram", 2400, 2300)
+    groups = []
+
+    def require_inside(parent, child, label: str, inset: int = 32) -> None:
+        px1, py1, px2, py2 = parent
+        cx1, cy1, cx2, cy2 = child
+        if cx1 < px1 + inset or cy1 < py1 + inset or cx2 > px2 - inset or cy2 > py2 - inset:
+            raise ValueError(f"{label} is outside its component boundary")
 
     def group(xy, title: str, items: list[str], cols: int = 2):
         x1, y1, x2, y2 = xy
@@ -535,6 +542,8 @@ def component() -> None:
         d.text((x1 + 24, y1 + 20, x2 - 24, y1 + 72), title, SUBTITLE, align="left")
         item_w = (x2 - x1 - 80 - (cols - 1) * 26) // cols
         item_h = 66
+        if item_w < 260:
+            raise ValueError(f"{title} group is too narrow for readable subcomponents")
         row_count = math.ceil(len(items) / cols)
         min_row_gap = 20
         content_top = y1 + 105
@@ -544,12 +553,17 @@ def component() -> None:
             raise ValueError(f"{title} group is too short for its subcomponents")
         available_gap = 0 if row_count == 1 else (content_bottom - content_top - row_count * item_h) // (row_count - 1)
         row_gap = max(min_row_gap, available_gap)
+        item_boxes = []
         for idx, item in enumerate(items):
             col = idx % cols
             row = idx // cols
             bx1 = x1 + 40 + col * (item_w + 26)
             by1 = content_top + row * (item_h + row_gap)
-            d.box((bx1, by1, bx1 + item_w, by1 + item_h), item, COLORS["gray"], fnt=SMALL_BOLD, radius=12)
+            item_box = (bx1, by1, bx1 + item_w, by1 + item_h)
+            require_inside(xy, item_box, f"{title} / {item}")
+            item_boxes.append((item, item_box))
+            d.box(item_box, item, COLORS["gray"], fnt=SMALL_BOLD, radius=12)
+        groups.append((title, xy, item_boxes))
 
     left_x1, left_x2 = 120, 1120
     right_x1, right_x2 = 1300, 2280
@@ -613,7 +627,11 @@ def component() -> None:
     d.arrow((left_x2, 1130), (right_x1, 1130), label="uses adapters")
     d.arrow((right_mid_x, 1345), (right_mid_x, 1465), label="wraps")
     d.orthogonal_arrow([(left_x2, 2058), (1215, 2058), (1215, 1680), (right_x1, 1680)], label="file paths and metadata")
+    for title, bounds, item_boxes in groups:
+        for item, item_box in item_boxes:
+            require_inside(bounds, item_box, f"{title} / {item}")
     d.save("component_diagram.png")
+    d.save("component_diagram_clean.png")
 
 
 def deployment() -> None:

@@ -1396,7 +1396,7 @@ The state diagram defines valid analysis states and prevents ambiguous behavior.
 
 The component diagram shows the MVP backend modules as large owning components with their subcomponents inside them. It separates API ownership, application services, domain objects, infrastructure adapters, persistence, and external tools.
 
-![Component Diagram](diagrams/component_diagram.png)
+![Component Diagram](diagrams/component_diagram_clean.png)
 
 ### B.14 Deployment Diagram
 

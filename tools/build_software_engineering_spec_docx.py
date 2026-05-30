@@ -28,7 +28,7 @@ DIAGRAM_IMAGES = {
     "B.10 Domain Class Diagram": "domain_class_diagram.png",
     "B.11 Entity Relationship Diagram": "erd.png",
     "B.12 Video Status State Diagram": "video_status_state_diagram.png",
-    "B.13 Component Diagram": "component_diagram.png",
+    "B.13 Component Diagram": "component_diagram_clean.png",
     "B.14 Deployment Diagram": "deployment_diagram.png",
     "B.15 API and Integration Swimlane Diagram": "api_integration_swimlane.png",
 }
