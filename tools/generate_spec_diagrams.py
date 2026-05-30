@@ -214,16 +214,17 @@ def use_case() -> None:
     d.draw.rounded_rectangle((430, 145, 1370, 1000), 26, outline=COLORS["blue"], width=4, fill="#FBFDFF")
     d.text((470, 165, 1330, 215), "Multimodal Video Understanding Engine", SUBTITLE)
     ovals = {
-        "upload": (690, 255, 1110, 345, "Upload Video"),
-        "analyze": (690, 400, 1110, 490, "Analyze Video"),
-        "timeline": (690, 545, 1110, 635, "View Timeline"),
-        "ask": (690, 690, 1110, 780, "Ask Question About Video"),
-        "evidence": (690, 835, 1110, 925, "View Timestamped Evidence"),
+        "app": (650, 245, 1150, 325, "Use Product Web App"),
+        "upload": (650, 355, 1150, 435, "Upload Video"),
+        "analyze": (650, 465, 1150, 545, "Analyze Video"),
+        "timeline": (650, 575, 1150, 655, "View Timeline"),
+        "ask": (650, 685, 1150, 765, "Ask Question About Video"),
+        "evidence": (650, 795, 1150, 875, "View Timestamped Evidence"),
     }
     for xy in ovals.values():
         d.ellipse(xy[:4], xy[4])
-    left_points = [(690, 300), (690, 445), (690, 590), (690, 735), (690, 880)]
-    right_points = [(1110, 300), (1110, 445), (1110, 590), (1110, 735)]
+    left_points = [(650, 285), (650, 395), (650, 505), (650, 615), (650, 725), (650, 835)]
+    right_points = [(1150, 285), (1150, 395), (1150, 505), (1150, 615), (1150, 725)]
     for end in left_points:
         d.draw.line((265, 555, *end), fill=COLORS["line"], width=3)
     for end in right_points:
@@ -233,10 +234,10 @@ def use_case() -> None:
 
 def context() -> None:
     d = Diagram("System Context Diagram", 2000, 1120)
-    d.box((740, 330, 1260, 860), "Multimodal Video\nUnderstanding Engine", COLORS["light_blue"], fnt=SUBTITLE)
+    d.box((740, 330, 1260, 860), "Multimodal Video\nUnderstanding Engine\nReact/Vite + FastAPI", COLORS["light_blue"], fnt=SUBTITLE)
 
     d.box((120, 300, 450, 440), "User", COLORS["white"])
-    d.box((120, 585, 450, 735), "Swagger UI /\nFuture Web UI", COLORS["white"])
+    d.box((120, 585, 450, 735), "Browser\nProduct Web App\nSwagger UI", COLORS["white"])
     d.box((1510, 235, 1880, 385), "Model Provider\nAPIs", COLORS["white"])
     d.box((1510, 475, 1880, 625), "FFmpeg / OpenCV /\nPySceneDetect", COLORS["white"])
     d.box((1510, 715, 1880, 865), "Local Files\nand SQLite", COLORS["white"])
@@ -541,13 +542,20 @@ def component() -> None:
             by1 = y1 + 105 + row * 92
             d.box((bx1, by1, bx1 + item_w, by1 + item_h), item, COLORS["gray"], fnt=SMALL_BOLD, radius=12)
 
-    group((120, 160, 1120, 420), "API Layer", [
+    group((120, 160, 2280, 350), "Frontend Layer", [
+        "React views",
+        "API client",
+        "workflow hook",
+        "product components",
+        "styles and tests",
+    ], cols=5)
+    group((120, 430, 1120, 680), "API Layer", [
         "videos.py routes",
         "Pydantic schemas",
         "error response mapper",
         "request validation",
     ])
-    group((120, 500, 1120, 875), "Application Services", [
+    group((120, 760, 1120, 1065), "Application Services", [
         "video_storage.py",
         "video_processor.py",
         "timeline_builder.py",
@@ -555,19 +563,19 @@ def component() -> None:
         "status workflow",
         "evidence retrieval",
     ])
-    group((120, 955, 1120, 1200), "Domain Layer", [
+    group((120, 1145, 1120, 1325), "Domain Layer", [
         "entities.py",
         "statuses.py",
         "errors.py",
         "evidence types",
     ])
-    group((120, 1280, 1120, 1548), "Persistence Layer", [
+    group((120, 1395, 1120, 1585), "Persistence Layer", [
         "video_repository.py",
         "db/models.py",
         "SQLite metadata",
         "migration-ready schema",
-    ])
-    group((1300, 500, 2280, 990), "Infrastructure Adapters", [
+    ], cols=4)
+    group((1300, 760, 2280, 1120), "Infrastructure Adapters", [
         "audio_extractor.py",
         "transcriber.py",
         "frame_extractor.py",
@@ -575,7 +583,7 @@ def component() -> None:
         "frame_analyzer.py",
         "file storage adapter",
     ])
-    group((1300, 1080, 2280, 1548), "External Tools and APIs", [
+    group((1300, 1210, 2280, 1585), "External Tools and APIs", [
         "FFmpeg",
         "OpenCV",
         "PySceneDetect",
@@ -584,12 +592,13 @@ def component() -> None:
         "Local file system",
     ])
 
-    d.arrow((620, 420), (620, 500), label="calls services")
-    d.arrow((620, 875), (620, 955), label="uses domain model")
-    d.arrow((620, 1200), (620, 1280), label="persists through repository")
-    d.arrow((1120, 690), (1300, 690), label="uses adapters")
-    d.arrow((1790, 990), (1790, 1080), label="wraps")
-    d.orthogonal_arrow([(1300, 1320), (1215, 1320), (1215, 1395), (1120, 1395)], label="file paths and metadata")
+    d.arrow((620, 350), (620, 430), label="HTTP calls")
+    d.arrow((620, 680), (620, 760), label="calls services")
+    d.arrow((620, 1065), (620, 1145), label="uses domain model")
+    d.arrow((620, 1325), (620, 1395), label="persists through repository")
+    d.arrow((1120, 910), (1300, 910), label="uses adapters")
+    d.arrow((1790, 1120), (1790, 1210), label="wraps")
+    d.orthogonal_arrow([(1300, 1490), (1215, 1490), (1215, 1495), (1120, 1495)], label="file paths and metadata")
     d.save("component_diagram.png")
 
 
@@ -598,10 +607,11 @@ def deployment() -> None:
     d.draw.rounded_rectangle((100, 170, 1420, 1080), 30, fill="#FBFDFF", outline=COLORS["blue"], width=4)
     d.text((130, 205, 1390, 265), "Developer Laptop", SUBTITLE, align="left")
 
-    d.draw.rounded_rectangle((170, 315, 1350, 560), 24, fill=COLORS["pale_blue"], outline=COLORS["blue"], width=3)
+    d.draw.rounded_rectangle((170, 315, 1350, 590), 24, fill=COLORS["pale_blue"], outline=COLORS["blue"], width=3)
     d.text((195, 340, 1325, 390), "Application Runtime", SUBTITLE, align="left")
-    d.box((250, 420, 560, 510), "Browser /\nSwagger UI", COLORS["white"], fnt=SMALL_BOLD)
-    d.box((700, 395, 1100, 535), "FastAPI App\nUvicorn + Python", COLORS["white"], fnt=SMALL_BOLD)
+    d.box((225, 425, 515, 530), "Browser\nReact Web App", COLORS["white"], fnt=SMALL_BOLD)
+    d.box((590, 425, 850, 530), "Vite Dev\nServer", COLORS["white"], fnt=SMALL_BOLD)
+    d.box((945, 400, 1235, 555), "FastAPI App\nUvicorn + Python", COLORS["white"], fnt=SMALL_BOLD)
 
     d.draw.rounded_rectangle((170, 685, 1350, 1015), 24, fill=COLORS["pale_blue"], outline=COLORS["blue"], width=3)
     d.text((195, 710, 1325, 760), "Local Processing and Storage", SUBTITLE, align="left")
@@ -613,10 +623,11 @@ def deployment() -> None:
     d.text((1595, 425, 2045, 485), "External AI Provider", SUBTITLE, align="left")
     d.box((1645, 585, 1995, 690), "Transcription and\nVision APIs", COLORS["light_blue"], fnt=SMALL_BOLD)
 
-    d.arrow((560, 465), (700, 465), label="HTTP localhost")
-    d.orthogonal_arrow([(900, 535), (900, 650), (900, 685)], label="local files, metadata, processing")
-    d.orthogonal_arrow([(1100, 435), (1490, 435), (1490, 620), (1645, 620)], label="HTTPS API calls")
-    d.orthogonal_arrow([(1645, 670), (1490, 670), (1490, 500), (1100, 500)], label="AI results")
+    d.arrow((590, 478), (515, 478), label="serves UI")
+    d.orthogonal_arrow([(370, 425), (370, 375), (1090, 375), (1090, 400)], label="HTTP API")
+    d.orthogonal_arrow([(1090, 555), (1090, 650), (900, 685)], label="local files, metadata, processing")
+    d.orthogonal_arrow([(1235, 435), (1490, 435), (1490, 620), (1645, 620)], label="HTTPS API calls")
+    d.orthogonal_arrow([(1645, 670), (1490, 670), (1490, 500), (1235, 500)], label="AI results")
     d.save("deployment_diagram.png")
 
 
@@ -629,7 +640,7 @@ def api_integration_swimlane() -> None:
     top = 140
     lane_h = 235
     lanes = [
-        ("User / API Client", top, top + lane_h),
+        ("User / Web App", top, top + lane_h),
         ("FastAPI Backend", top + lane_h, top + lane_h * 2),
         ("Processing Services", top + lane_h * 2, top + lane_h * 3),
         ("External Tools / Model APIs", top + lane_h * 3, top + lane_h * 4),
