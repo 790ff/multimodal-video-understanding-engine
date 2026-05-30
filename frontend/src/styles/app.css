@@ -15,7 +15,7 @@
 .app-header h1 {
   margin: 3px 0 0;
   color: var(--ink);
-  font-size: clamp(1.55rem, 2vw, 2.25rem);
+  font-size: 2rem;
   line-height: 1.1;
   letter-spacing: 0;
 }
@@ -130,6 +130,63 @@
   white-space: nowrap;
 }
 
+.progress-meter {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.progress-meter__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 760;
+}
+
+.progress-meter__track {
+  position: relative;
+  overflow: hidden;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--surface-alt);
+}
+
+.progress-meter__bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: inherit;
+  background: var(--muted);
+  transition: width 180ms ease;
+}
+
+.progress-meter--active .progress-meter__bar {
+  background: var(--accent);
+}
+
+.progress-meter--success .progress-meter__bar {
+  background: var(--success);
+}
+
+.progress-meter--danger .progress-meter__bar {
+  background: var(--danger);
+}
+
+.progress-meter__bar.is-indeterminate {
+  width: 45%;
+  animation: progress-indeterminate 1300ms ease-in-out infinite;
+}
+
+.progress-meter p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
 .primary-button,
 .secondary-button,
 .ghost-button,
@@ -215,6 +272,63 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.progress-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  padding: 0;
+  margin: 12px 0 0;
+  list-style: none;
+}
+
+.progress-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fbfcfb;
+  color: var(--muted);
+  padding: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.progress-step span {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--border-strong);
+}
+
+.progress-step--active {
+  border-color: #90c8c0;
+  color: var(--accent-strong);
+}
+
+.progress-step--active span {
+  background: var(--accent);
+}
+
+.progress-step--complete {
+  color: var(--success);
+}
+
+.progress-step--complete span {
+  background: var(--success);
+}
+
+.progress-step--failed {
+  border-color: #f0b4ac;
+  color: var(--danger);
+}
+
+.progress-step--failed span {
+  background: var(--danger);
+}
+
 .load-video-form {
   display: grid;
   gap: 7px;
@@ -222,6 +336,12 @@ button:disabled {
 }
 
 .load-video-form label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.field-label {
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 700;
@@ -442,9 +562,13 @@ button:disabled {
   line-height: 1.45;
 }
 
+.empty-state__action {
+  min-width: 140px;
+}
+
 .error-banner {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: start;
   gap: 12px;
   max-width: 1440px;
@@ -466,6 +590,30 @@ button:disabled {
   color: #7f1d1d;
 }
 
+.error-banner__recovery {
+  margin-top: 5px !important;
+  color: #8a2a22 !important;
+}
+
+.error-action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 32px;
+  border: 1px solid #e69b91;
+  border-radius: 8px;
+  background: #fff8f7;
+  color: var(--danger);
+  padding: 0 10px;
+  font-weight: 740;
+  cursor: pointer;
+}
+
+.error-action-button:hover {
+  border-color: var(--danger);
+}
+
 .runtime-note {
   border-radius: 8px;
   width: 100%;
@@ -482,6 +630,16 @@ button:disabled {
   }
 }
 
+@keyframes progress-indeterminate {
+  0% {
+    transform: translateX(-110%);
+  }
+
+  100% {
+    transform: translateX(240%);
+  }
+}
+
 @media (max-width: 1180px) {
   .workspace-grid {
     grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
@@ -495,6 +653,10 @@ button:disabled {
 @media (max-width: 760px) {
   .app-shell {
     padding: 16px;
+  }
+
+  .app-header h1 {
+    font-size: 1.55rem;
   }
 
   .app-header,
@@ -514,5 +676,41 @@ button:disabled {
 
   .timeline-event {
     grid-template-columns: 1fr;
+  }
+
+  .error-banner {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .error-action-button {
+    grid-column: 2 / -1;
+    justify-self: start;
+  }
+}
+
+@media (max-width: 540px) {
+  .button-row,
+  .load-video-form div,
+  .progress-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .api-pill,
+  .runtime-note {
+    border-radius: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin,
+  .progress-meter__bar.is-indeterminate {
+    animation: none;
+  }
+
+  .primary-button,
+  .secondary-button,
+  .ghost-button,
+  .progress-meter__bar {
+    transition: none;
   }
 }

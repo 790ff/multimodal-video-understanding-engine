@@ -4,7 +4,7 @@ for
 
 # Multimodal Video Understanding Engine
 
-Version 0.6 Draft
+Version 0.7 Draft
 
 Prepared by Thamer
 
@@ -20,6 +20,7 @@ Date: 2026-05-31
 | Thamer | 2026-05-29 | Added ask-video retrieval, replaceable answer provider, stored-evidence limits, and M6 API/testing details | 0.4 |
 | Thamer | 2026-05-29 | Added M7 delivery readiness, manual acceptance checklist, known limitations, local troubleshooting, and runtime artifact controls | 0.5 |
 | Thamer | 2026-05-31 | Added M8 product web app foundation, frontend structure, local CORS configuration, browser workflow, frontend checks, and updated release scope | 0.6 |
+| Thamer | 2026-05-31 | Added M9 frontend product hardening, progress and recovery states, safe error categories, accessibility basics, responsive verification, and mocked frontend flow tests | 0.7 |
 
 ## Table of Contents
 
@@ -42,6 +43,8 @@ The scope of this document is the local MVP product. It covers the FastAPI backe
 For M7, this document also covers delivery readiness for the backend MVP: repeatable local setup, environment documentation, manual acceptance testing, known limitations, troubleshooting guidance, and verification commands. M7 does not introduce a React interface, new retrieval architecture, background queue, authentication layer, or production storage system.
 
 For M8, this document also covers the first product web app foundation. M8 introduces a local React/Vite interface over the existing backend APIs for upload, status, analysis, timeline inspection, and question answering. M8 does not introduce authentication, vector search, embeddings, ranking, background queues, or a backend architecture rewrite.
+
+For M9, this document also covers frontend product hardening. M9 improves upload progress, analysis progress, retry and recovery states, actionable safe errors, responsive layout behavior, accessibility basics, and frontend test coverage with mocked backend responses. M9 does not introduce user accounts, analytics, tracking, a visual redesign, new public backend endpoints, or a backend processing architecture rewrite.
 
 ### 1.2 Document Conventions
 
@@ -123,6 +126,9 @@ The product must provide the following major functions:
 - Provide a local React/Vite product web app for upload, status, analysis, timeline, and ask workflows.
 - Configure the frontend API base URL through local environment variables.
 - Show loading, empty, and safe error states in the product web app.
+- Show upload progress, analysis progress, and retry or recovery states in the product web app.
+- Show actionable safe frontend errors for provider configuration, FFmpeg/media processing, failed analysis, unsupported files, and server connectivity.
+- Support reasonable desktop and mobile layouts with basic accessibility affordances for the core workflow.
 
 ### 2.3 User Classes and Characteristics
 
@@ -187,7 +193,7 @@ The MVP should include:
 
 ### 3.1 User Interfaces
 
-The M8 MVP user interface is a local React/Vite web app. FastAPI Swagger UI remains available as API documentation and a developer-facing fallback, but the product owner workflow should use the web app.
+The M8 and M9 MVP user interface is a local React/Vite web app. FastAPI Swagger UI remains available as API documentation and a developer-facing fallback, but the product owner workflow should use the web app.
 
 The product web app includes:
 
@@ -197,6 +203,9 @@ The product web app includes:
 - Video question-answering view.
 - Evidence view showing relevant timestamps and frame references.
 - Loading, empty, and safe error states for backend offline, unsupported files, not-analyzed videos, failed analysis, and provider configuration failures.
+- Upload progress, analysis progress, and retry/recovery controls for failed upload, analysis, timeline, status, and ask operations.
+- Responsive desktop and mobile layouts for the core workflow.
+- Basic accessibility affordances including form labels, alert semantics, progress semantics, focus states, and busy states.
 
 ### 3.2 Hardware Interfaces
 
@@ -370,12 +379,13 @@ The system shall provide a local product web app so a product owner, developer, 
 
 1. User opens the local web app.
 2. User uploads an mp4 or mov video.
-3. System displays upload metadata and current status.
+3. System displays upload progress, upload metadata, and current status.
 4. User starts analysis from the web app.
-5. System displays loading state and later shows analyzed status and analysis counts.
+5. System displays analysis progress and status refresh state, then shows analyzed status and analysis counts.
 6. User views timeline events with timestamped evidence.
 7. User asks a question.
 8. System displays an answer and supporting evidence timestamps.
+9. If an operation fails, the web app displays a safe actionable error and a retry or recovery action where the current state supports one.
 
 #### 4.6.3 Functional Requirements
 
@@ -389,6 +399,12 @@ The system shall provide a local product web app so a product owner, developer, 
 - FR-43: The web app shall read the backend API base URL from frontend environment configuration.
 - FR-44: The web app shall show clear loading, empty, and error states.
 - FR-45: The web app shall support loading an existing video record by video identifier for local verification.
+- FR-46: The web app shall show browser upload progress when uploading a video.
+- FR-47: The web app shall show analysis progress and status refresh state while backend analysis is running.
+- FR-48: The web app shall provide retry or recovery actions for failed upload, analysis, timeline loading, status refresh, and ask operations when enough local state exists to retry safely.
+- FR-49: The web app shall provide actionable safe errors for provider configuration problems, FFmpeg/media processing failures, failed analysis, unsupported files, and server connectivity problems.
+- FR-50: The web app shall support reasonable desktop and mobile viewport widths for the core workflow.
+- FR-51: The web app shall include accessibility basics for the core workflow, including labeled controls, alert semantics, progress semantics, focus states, and busy states.
 
 ## 5. Other Nonfunctional Requirements
 
@@ -425,6 +441,9 @@ The system shall provide a local product web app so a product owner, developer, 
 - NFR-20: The frontend shall use a clean structure for API client code, components, views, hooks/state, utilities, and styles.
 - NFR-21: The frontend shall map backend errors to safe user-facing messages without exposing secrets, stack traces, or private local paths.
 - NFR-22: Local frontend origins shall be configurable through backend environment settings.
+- NFR-23: The frontend shall remain usable at common desktop and mobile viewport widths without overlapping controls or unreadable workflow content.
+- NFR-24: The frontend shall provide accessibility basics for product operation, including visible focus states, semantic alerts, progress indicators, labeled form controls, and busy-state hints.
+- NFR-25: Frontend tests shall cover the upload, analyze, timeline, and ask workflows plus key state transitions using mocked backend responses.
 
 ### 5.5 Business Rules
 
@@ -444,7 +463,7 @@ The system shall provide a local product web app so a product owner, developer, 
 - OR-6: The project shall include a manual acceptance checklist for the local MVP product workflow.
 - OR-7: The project shall document known limitations and local troubleshooting before delivery.
 - OR-8: Local secrets, SQLite databases, uploaded media, extracted audio, and extracted frames shall remain out of source control.
-- OR-9: The project shall include frontend check, test, and build commands for the M8 web app.
+- OR-9: The project shall include frontend check, test, and build commands for the M8 and M9 web app.
 - OR-10: The project shall document local frontend setup and API base URL configuration.
 
 ## Part II. Software Architecture
@@ -466,7 +485,7 @@ This section defines the architectural foundation for the MVP. The purpose is to
 
 ### 7.2 Architectural Style: Modular Monolith
 
-The backend will run as one FastAPI application. Internally, the application will be divided into modules by responsibility. The M8 product web app will run as a separate local React/Vite frontend that consumes the existing backend API. This avoids the complexity of early microservices while still preventing the codebase from becoming one large script.
+The backend will run as one FastAPI application. Internally, the application will be divided into modules by responsibility. The M8 and M9 product web app will run as a separate local React/Vite frontend that consumes the existing backend API. This avoids the complexity of early microservices while still preventing the codebase from becoming one large script.
 
 Architectural rules:
 
@@ -502,7 +521,7 @@ The MVP API should remain small and explicit:
 
 The API should return clear error responses for invalid input, unsupported files, missing video records, ask-before-analysis conflicts, failed processing, and missing configuration.
 
-The M8 frontend should consume these endpoints without requiring new product API endpoints. Local browser access is enabled by a configurable CORS allowlist, not by weakening API contracts or serving runtime media folders publicly.
+The M8 and M9 frontend should consume these endpoints without requiring new product API endpoints. Local browser access is enabled by a configurable CORS allowlist, not by weakening API contracts or serving runtime media folders publicly.
 
 ### 7.5 Pipeline Orchestration
 
@@ -845,7 +864,7 @@ The MVP should use SQLAlchemy for database access and SQLite as the database eng
 
 ## 10. API and Integration Design
 
-The API should remain intentionally small for the MVP. It should expose the core product behavior and allow the M8 frontend to compose the product workflow without adding duplicate backend routes.
+The API should remain intentionally small for the MVP. It should expose the core product behavior and allow the M8 and M9 frontend to compose the product workflow without adding duplicate backend routes.
 
 The end-to-end API and integration flow is visualized in Appendix B.15. That swimlane diagram shows which layer owns each interaction and how REST calls, processing services, external tools, provider APIs, SQLite, and local files work together.
 
@@ -1063,11 +1082,12 @@ The `code` field should be stable enough for the frontend to handle. The `messag
 
 ### 10.10 Product Web App Integration
 
-The M8 product web app consumes the existing backend API without introducing a new analysis, retrieval, ranking, or storage contract.
+The M8 and M9 product web app consumes the existing backend API without introducing new analysis, retrieval, ranking, or storage contracts.
 
 Frontend integration rules:
 
 - The frontend shall call `POST /videos/upload` for browser uploads.
+- The frontend may use browser upload progress events for `POST /videos/upload` without changing the backend upload API contract.
 - The frontend shall call `GET /videos/{video_id}/status` for status refresh and polling.
 - The frontend shall call `POST /videos/{video_id}/analyze` to start synchronous analysis.
 - The frontend shall call `GET /videos/{video_id}/timeline` after analysis completes.
@@ -1076,8 +1096,10 @@ Frontend integration rules:
 - The backend shall use `CORS_ALLOWED_ORIGINS` to allow local Vite origins.
 - The frontend shall translate known backend error codes into safe product messages.
 - The frontend shall not expose backend stack traces, provider keys, or private local paths.
+- The frontend shall keep retry and recovery state inside the workflow state layer rather than duplicating backend processing logic.
+- The frontend shall keep API client, components, views, hooks/state, utilities, and styles in separate frontend source areas.
 
-M8 intentionally adds no authentication, background queue, vector search, embeddings, or ranking.
+M8 and M9 intentionally add no authentication, background queue, vector search, embeddings, ranking, analytics, tracking, or public media-serving endpoint.
 
 ## Part IV. Verification, Release, and Supporting Models
 
@@ -1102,6 +1124,7 @@ Unit tests should cover:
 - Error handling for missing video IDs and invalid states.
 - Frontend user-facing error mapping.
 - Frontend time and evidence formatting helpers.
+- Frontend progress, retry, and recovery state transitions where they are handled in local workflow state.
 
 ### 11.2 Integration Tests
 
@@ -1118,24 +1141,31 @@ Integration tests should cover:
 - Returning timestamped evidence with ask answers.
 - Allowing the local Vite frontend origin through backend CORS.
 - Building and type-checking the frontend application.
+- Rendering frontend upload, analyze, timeline, and ask flows with mocked backend responses.
+- Rendering frontend recovery states for unsupported files, provider configuration failures, FFmpeg/media processing failures, failed analysis, and server connectivity failures.
 
 ### 11.3 Manual Acceptance Test
 
-The M8 local MVP is acceptable when a product owner, developer, or QA tester can complete the following workflow
+The M9 local MVP is acceptable when a product owner, developer, or QA tester can complete the following workflow
 with a short `.mp4` or `.mov` video through the product web app:
 
 - Start the API server with `uvicorn app.main:app --reload`.
 - Start the frontend with `cd frontend && npm run dev -- --host 127.0.0.1`.
 - Open `http://127.0.0.1:5173`.
 - Upload a supported short video from the web app.
+- Confirm upload progress appears during upload and upload completion is clear.
 - Confirm the status panel shows `uploaded`.
 - Run analysis from the web app.
+- Confirm analysis progress and refresh state are visible while processing runs.
 - Confirm the status panel shows `analyzed` plus transcript, keyframe, scene, and timeline counts.
 - Confirm the timeline view shows ordered timestamped timeline events.
 - Confirm timeline events include evidence references to stored transcript, frame, or scene records.
 - Ask a non-empty question through the web app.
 - Confirm the answer panel includes an answer and timestamped evidence.
 - Repeat the ask request and confirm the video remains analyzed without requiring upload or preprocessing to run again.
+- At a desktop viewport and a reasonable mobile viewport, confirm core controls remain usable without overlapping text or controls.
+- Confirm unsupported files, provider configuration failures, FFmpeg/media processing failures, failed analysis, and backend connectivity failures show safe actionable errors without secrets, stack traces, or private local paths.
+- Confirm retry or recovery controls are available for failed upload, analysis, timeline loading, status refresh, and ask operations when retrying is possible.
 
 Manual acceptance requires a configured provider key and FFmpeg installed locally.
 If the workflow fails, use the troubleshooting guidance in
@@ -1155,7 +1185,7 @@ pytest
 The automated tests must use fake providers or local test doubles. They must not
 call external provider APIs or require real provider credentials.
 
-M8 product web app delivery also requires these frontend checks:
+M8 and M9 product web app delivery also require these frontend checks:
 
 ```bash
 cd frontend
@@ -1187,6 +1217,7 @@ npm audit --audit-level=moderate
 | M6: Ask video | Question endpoint, evidence retrieval, answer generation, timestamped evidence. |
 | M7: Delivery readiness and verification | README workflow, `.env.example` coverage, manual acceptance checklist, known limitations, troubleshooting, runtime artifact controls, and local checks. |
 | M8: Product web app foundation | React/Vite local product app for upload, status, analysis, timeline, ask, evidence display, safe errors, and frontend verification. |
+| M9: Frontend product hardening | Upload progress, analysis progress, retry/recovery states, actionable safe errors, responsive layout, accessibility basics, and mocked frontend flow tests. |
 
 ### 12.2 Release Scope
 
@@ -1202,6 +1233,7 @@ Included in the first MVP:
 - Question answering with timestamped evidence.
 - Automated tests with mocked AI clients.
 - Frontend type-check, lint, test, and build commands.
+- Frontend product hardening for progress, recovery, safe errors, responsive layout, accessibility basics, and mocked workflow tests.
 
 Deferred from the first MVP:
 
@@ -1214,7 +1246,7 @@ Deferred from the first MVP:
 - Hosted production deployment.
 - In-browser serving of extracted frame image files.
 
-M8 adds the first product web app while preserving the backend architecture and API scope. It does not add new public product endpoints, ranking, embeddings, vector search, background processing, authentication, or production deployment architecture.
+M8 adds the first product web app while preserving the backend architecture and API scope. M9 hardens that web app for local product use. These milestones do not add new public product endpoints, ranking, embeddings, vector search, background processing, authentication, analytics, tracking, or production deployment architecture.
 
 ### 12.3 GitHub Release Readiness
 
@@ -1238,7 +1270,7 @@ Before the first GitHub release, the repository should include:
 
 ### 12.4 Known Limitations
 
-The M8 local MVP has the following known limitations:
+The M9 local MVP has the following known limitations:
 
 - No authentication, authorization, user accounts, or multi-tenant data isolation.
 - No background queue. Analysis runs synchronously in the API process.
@@ -1277,8 +1309,8 @@ This matrix connects requirements to implementation modules and planned verifica
 | Timeline generation | FR-18 to FR-20 | `timeline_builder.py`, timeline repository methods, `/videos/{video_id}/timeline` | Timeline ordering test, evidence link test, and timeline API test. |
 | Video question answering | FR-22 to FR-28a | `question_answerer.py`, evidence retrieval methods, `/videos/{video_id}/ask` | Success, missing video, not analyzed, empty question, insufficient evidence, and timestamped evidence tests. |
 | Storage and retrieval | FR-29 to FR-35, NFR-19 | `db/models.py`, `video_repository.py` | Repository tests with temporary SQLite database. |
-| Product web app | FR-36 to FR-45, NFR-20 to NFR-22 | `frontend/src`, `frontend/package.json`, `app/main.py`, `config.py` | Frontend type-check, lint, tests, build, browser workflow verification, and CORS preflight test. |
-| Security and configuration | NFR-6 to NFR-14, NFR-21 to NFR-22 | `config.py`, upload validation, API error handling, frontend error mapping | Env var test, rejected extension test, no-secret-response check, CORS test, frontend error mapping test. |
+| Product web app | FR-36 to FR-51, NFR-20 to NFR-25 | `frontend/src`, `frontend/package.json`, `app/main.py`, `config.py` | Frontend type-check, lint, tests, build, mocked workflow tests, browser workflow verification, responsive screenshot verification, and CORS preflight test. |
+| Security and configuration | NFR-6 to NFR-14, NFR-21 to NFR-22 | `config.py`, upload validation, API error handling, frontend error mapping | Env var test, rejected extension test, no-secret-response check, CORS test, frontend error mapping test, and frontend safe error tests. |
 | Release readiness | OR-1 to OR-10 | README, `.env.example`, `frontend/.env.example`, `.gitignore`, test suite, software engineering specification | Manual acceptance checklist, runtime artifact review, backend checks, frontend checks, and dependency audit. |
 
 ## Appendix A: Glossary
@@ -1336,7 +1368,7 @@ The use case diagram identifies the main system functions visible to the primary
 | View Timeline | Primary User, QA Tester | User retrieves timestamped timeline events. | FR-18 to FR-20, FR-34 |
 | Ask Question About Video | Primary User, QA Tester | User asks natural-language questions about a processed video. | FR-22 to FR-28 |
 | View Timestamped Evidence | Primary User, QA Tester | System returns timestamps, frames, and timeline evidence with answers. | FR-20, FR-25 |
-| Use Product Web App | Primary User, QA Tester | User completes upload, analyze, timeline, and ask from the local web app. | FR-36 to FR-45 |
+| Use Product Web App | Primary User, QA Tester | User completes upload, analyze, timeline, ask, progress, safe error, and recovery flows from the local web app. | FR-36 to FR-51 |
 
 ### B.4 System Context Diagram
 
