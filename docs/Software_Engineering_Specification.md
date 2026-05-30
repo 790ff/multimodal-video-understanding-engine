@@ -4,11 +4,11 @@ for
 
 # Multimodal Video Understanding Engine
 
-Version 0.5 Draft
+Version 0.6 Draft
 
 Prepared by Thamer
 
-Date: 2026-05-29
+Date: 2026-05-31
 
 ## Revision History
 
@@ -19,6 +19,7 @@ Date: 2026-05-29
 | Thamer | 2026-05-29 | Added provider configuration, scene/window timeline synthesis, timeline retrieval, and evidence-link storage updates | 0.3 |
 | Thamer | 2026-05-29 | Added ask-video retrieval, replaceable answer provider, stored-evidence limits, and M6 API/testing details | 0.4 |
 | Thamer | 2026-05-29 | Added M7 delivery readiness, manual acceptance checklist, known limitations, local troubleshooting, and runtime artifact controls | 0.5 |
+| Thamer | 2026-05-31 | Added M8 product web app foundation, frontend structure, local CORS configuration, browser workflow, frontend checks, and updated release scope | 0.6 |
 
 ## Table of Contents
 
@@ -34,11 +35,13 @@ This part presents the SRS content for the project. It defines the product scope
 
 ### 1.1 Purpose
 
-This Software Engineering Specification defines the requirements, architecture, software design, data design, testing strategy, and release plan for the first MVP release of the Multimodal Video Understanding Engine. The system allows a user to upload a video, preprocess it into audio transcript segments and key visual frames, build a timestamped timeline, and ask natural-language questions about the uploaded video.
+This Software Engineering Specification defines the requirements, architecture, software design, data design, testing strategy, and release plan for the first MVP release of the Multimodal Video Understanding Engine. The system allows a user to upload a video, preprocess it into audio transcript segments and key visual frames, build a timestamped timeline, inspect evidence, and ask natural-language questions about the uploaded video.
 
-The scope of this document is the backend-centered MVP. It covers video upload, preprocessing, transcription, frame extraction, scene detection, visual analysis, timeline generation, basic video question answering, local metadata storage, software architecture, module boundaries, API contracts, database design, and testing expectations. It does not cover custom model training, production authentication, real-time video streaming, or large-scale distributed processing.
+The scope of this document is the local MVP product. It covers the FastAPI backend, React/Vite local web app, video upload, preprocessing, transcription, frame extraction, scene detection, visual analysis, timeline generation, basic video question answering, local metadata storage, software architecture, module boundaries, API contracts, database design, frontend structure, and testing expectations. It does not cover custom model training, production authentication, real-time video streaming, or large-scale distributed processing.
 
 For M7, this document also covers delivery readiness for the backend MVP: repeatable local setup, environment documentation, manual acceptance testing, known limitations, troubleshooting guidance, and verification commands. M7 does not introduce a React interface, new retrieval architecture, background queue, authentication layer, or production storage system.
+
+For M8, this document also covers the first product web app foundation. M8 introduces a local React/Vite interface over the existing backend APIs for upload, status, analysis, timeline inspection, and question answering. M8 does not introduce authentication, vector search, embeddings, ranking, background queues, or a backend architecture rewrite.
 
 ### 1.2 Document Conventions
 
@@ -57,7 +60,7 @@ This document is intended for the product owner, developers, QA testers, operato
 
 ### 1.4 Product Scope
 
-The Multimodal Video Understanding Engine is a web API system that turns uploaded videos into a searchable and question-answerable video memory. Instead of sending every frame to an AI model, the system extracts the important parts of the video: audio transcript with timestamps, keyframes, scene boundaries, visual summaries, and a chronological timeline.
+The Multimodal Video Understanding Engine is a local web product and API system that turns uploaded videos into a searchable and question-answerable video memory. Instead of sending every frame to an AI model, the system extracts the important parts of the video: audio transcript with timestamps, keyframes, scene boundaries, visual summaries, and a chronological timeline.
 
 The main objective is to let a user ask questions such as:
 
@@ -117,6 +120,9 @@ The product must provide the following major functions:
 - Generate a structured timeline of events.
 - Store video metadata, transcript, keyframes, scene data, and timeline records.
 - Answer user questions about a processed video with timestamped evidence.
+- Provide a local React/Vite product web app for upload, status, analysis, timeline, and ask workflows.
+- Configure the frontend API base URL through local environment variables.
+- Show loading, empty, and safe error states in the product web app.
 
 ### 2.3 User Classes and Characteristics
 
@@ -133,8 +139,10 @@ The MVP will run in a local development environment with:
 
 - macOS or Linux development machine.
 - Python 3.11 or newer.
+- Node.js 20 or newer for the local web app.
 - FastAPI backend.
 - Uvicorn development server.
+- React and Vite development server for the local product web app.
 - FFmpeg installed on the host machine.
 - OpenCV for frame extraction.
 - PySceneDetect for scene detection.
@@ -160,10 +168,11 @@ The MVP should include:
 - Environment variable guide, including API key configuration.
 - API endpoint documentation through FastAPI Swagger UI.
 - Sample workflow for uploading and analyzing a short video.
+- Frontend setup and environment instructions.
 - Testing instructions.
-- Manual acceptance checklist covering upload, analyze, timeline, and ask.
-- Known limitations for the backend MVP release.
-- Local troubleshooting notes for port conflicts, FFmpeg, provider keys, and SQLite/local data.
+- Manual acceptance checklist covering upload, analyze, timeline, and ask through the product web app.
+- Known limitations for the local MVP release.
+- Local troubleshooting notes for port conflicts, FFmpeg, provider keys, SQLite/local data, and frontend API base URL configuration.
 
 ### 2.7 Assumptions and Dependencies
 
@@ -178,15 +187,16 @@ The MVP should include:
 
 ### 3.1 User Interfaces
 
-The MVP user interface will be FastAPI Swagger UI. A later web interface may be built with React or Vite.
+The M8 MVP user interface is a local React/Vite web app. FastAPI Swagger UI remains available as API documentation and a developer-facing fallback, but the product owner workflow should use the web app.
 
-The expected screens or views for a future UI are:
+The product web app includes:
 
 - Video upload view.
 - Analysis status view.
 - Timeline view with timestamped events.
-- Video question-answering chat view.
-- Evidence view showing relevant timestamps and keyframes.
+- Video question-answering view.
+- Evidence view showing relevant timestamps and frame references.
+- Loading, empty, and safe error states for backend offline, unsupported files, not-analyzed videos, failed analysis, and provider configuration failures.
 
 ### 3.2 Hardware Interfaces
 
@@ -197,6 +207,8 @@ No special hardware interface is required for the MVP. The system should run on 
 | Component | Purpose |
 |---|---|
 | FastAPI | REST API backend framework. |
+| React | Local product web app UI framework. |
+| Vite | Frontend development server and build tool. |
 | FFmpeg | Extract audio from video and support video processing operations. |
 | OpenCV | Read videos and extract frames. |
 | PySceneDetect | Detect scene boundaries. |
@@ -208,7 +220,7 @@ No special hardware interface is required for the MVP. The system should run on 
 
 ### 3.4 Communications Interfaces
 
-The system will expose HTTP REST endpoints. File upload must use multipart/form-data. Structured responses must use JSON. Future deployment should use HTTPS to protect uploaded media, transcripts, and analysis results.
+The system will expose HTTP REST endpoints. File upload must use multipart/form-data. Structured responses must use JSON. The local React/Vite app will call the backend through a configurable API base URL and a limited CORS allowlist for local origins. Future deployment should use HTTPS to protect uploaded media, transcripts, and analysis results.
 
 ## 4. System Features
 
@@ -346,6 +358,38 @@ The system shall store metadata and analysis results so the same video does not 
 - FR-34: The system shall support retrieving a video timeline by video identifier.
 - FR-35: The system shall support retrieving video processing status by video identifier.
 
+### 4.6 Product Web App Foundation
+
+#### 4.6.1 Description and Priority
+
+Priority: High.
+
+The system shall provide a local product web app so a product owner, developer, or QA tester can complete the main workflow without using raw API calls.
+
+#### 4.6.2 Stimulus/Response Sequences
+
+1. User opens the local web app.
+2. User uploads an mp4 or mov video.
+3. System displays upload metadata and current status.
+4. User starts analysis from the web app.
+5. System displays loading state and later shows analyzed status and analysis counts.
+6. User views timeline events with timestamped evidence.
+7. User asks a question.
+8. System displays an answer and supporting evidence timestamps.
+
+#### 4.6.3 Functional Requirements
+
+- FR-36: The system shall provide a React/Vite local web app as the first product user interface.
+- FR-37: The web app shall allow users to upload supported video files.
+- FR-38: The web app shall display video status and analysis counts returned by the backend.
+- FR-39: The web app shall allow users to start analysis for an uploaded or loaded video.
+- FR-40: The web app shall display timeline events with timestamps and evidence references.
+- FR-41: The web app shall allow users to ask questions about analyzed videos.
+- FR-42: The web app shall display answers with timestamped evidence returned by the backend.
+- FR-43: The web app shall read the backend API base URL from frontend environment configuration.
+- FR-44: The web app shall show clear loading, empty, and error states.
+- FR-45: The web app shall support loading an existing video record by video identifier for local verification.
+
 ## 5. Other Nonfunctional Requirements
 
 ### 5.1 Performance Requirements
@@ -378,6 +422,9 @@ The system shall store metadata and analysis results so the same video does not 
 - NFR-17: The system shall produce traceable outputs so answers can be linked back to timestamps and evidence.
 - NFR-18: The API shall return clear error messages for invalid video IDs, unsupported files, failed analysis, and missing configuration.
 - NFR-19: The codebase shall support replacing SQLite with PostgreSQL in a future release.
+- NFR-20: The frontend shall use a clean structure for API client code, components, views, hooks/state, utilities, and styles.
+- NFR-21: The frontend shall map backend errors to safe user-facing messages without exposing secrets, stack traces, or private local paths.
+- NFR-22: Local frontend origins shall be configurable through backend environment settings.
 
 ### 5.5 Business Rules
 
@@ -394,9 +441,11 @@ The system shall store metadata and analysis results so the same video does not 
 - OR-3: The project shall include a simple test strategy before implementation is considered complete.
 - OR-4: The project should be prepared for GitHub release with a clear repository structure.
 - OR-5: Docker support is optional for the first release and may be added after the local MVP works.
-- OR-6: The project shall include a manual acceptance checklist for the backend MVP workflow.
+- OR-6: The project shall include a manual acceptance checklist for the local MVP product workflow.
 - OR-7: The project shall document known limitations and local troubleshooting before delivery.
 - OR-8: Local secrets, SQLite databases, uploaded media, extracted audio, and extracted frames shall remain out of source control.
+- OR-9: The project shall include frontend check, test, and build commands for the M8 web app.
+- OR-10: The project shall document local frontend setup and API base URL configuration.
 
 ## Part II. Software Architecture
 
@@ -417,7 +466,7 @@ This section defines the architectural foundation for the MVP. The purpose is to
 
 ### 7.2 Architectural Style: Modular Monolith
 
-The backend will run as one FastAPI application. Internally, the application will be divided into modules by responsibility. This avoids the complexity of early microservices while still preventing the codebase from becoming one large script.
+The backend will run as one FastAPI application. Internally, the application will be divided into modules by responsibility. The M8 product web app will run as a separate local React/Vite frontend that consumes the existing backend API. This avoids the complexity of early microservices while still preventing the codebase from becoming one large script.
 
 Architectural rules:
 
@@ -426,6 +475,7 @@ Architectural rules:
 - Infrastructure adapters shall isolate external tools and APIs.
 - Repositories shall isolate database access.
 - Domain objects shall represent video memory concepts such as videos, transcript segments, keyframes, scenes, timeline events, and evidence links.
+- The frontend shall remain a product interface layer and shall not duplicate backend processing, retrieval, or storage logic.
 
 ### 7.3 Layered Module Boundaries
 
@@ -436,6 +486,7 @@ Architectural rules:
 | Domain Layer | Core entities and status concepts | `Video`, `TranscriptSegment`, `Keyframe`, `Scene`, `TimelineEvent`, `EvidenceLink` |
 | Persistence Layer | Database models and repositories | `video_repository.py`, SQLite models |
 | Infrastructure Layer | External tools, file storage, and provider API clients | FFmpeg, OpenCV, PySceneDetect, OpenAI clients, Gemini clients |
+| Frontend Layer | Local product web app, API client, UI state, and visual presentation | `frontend/src/api`, `frontend/src/components`, `frontend/src/hooks`, `frontend/src/views`, `frontend/src/styles` |
 
 ### 7.4 API Boundaries
 
@@ -450,6 +501,8 @@ The MVP API should remain small and explicit:
 | `POST /videos/{video_id}/ask` | Answer a question using stored video memory. |
 
 The API should return clear error responses for invalid input, unsupported files, missing video records, ask-before-analysis conflicts, failed processing, and missing configuration.
+
+The M8 frontend should consume these endpoints without requiring new product API endpoints. Local browser access is enabled by a configurable CORS allowlist, not by weakening API contracts or serving runtime media folders publicly.
 
 ### 7.5 Pipeline Orchestration
 
@@ -532,6 +585,8 @@ Testing rules:
 | Retrieval-first question answering | Keeps M6 scoped to stored evidence without ranking, embeddings, vector search, or full-video prompting | Enables later retrieval improvements without changing the ask API |
 | Replaceable answer provider | Keeps answer generation behind a small interface | Tests can use fakes and future providers can be added without changing route logic |
 | Explicit status model | Supports retries and future background workers | Requires status endpoint and consistent transitions |
+| React/Vite local web app | Provides the first usable product surface without changing backend architecture | Requires Node.js tooling and frontend verification commands |
+| Configurable local CORS allowlist | Allows the local web app to call the API directly | Requires documented frontend origins and environment configuration |
 
 ## Part III. Software Design
 
@@ -559,9 +614,10 @@ The repository should be organized by responsibility instead of by technical acc
 | Database models | app/db/models.py | Defines ORM models that map the domain data to SQLite tables. |
 | Runtime data | data/uploads, data/audio, data/frames | Stores large local media artifacts outside the database. |
 | SQLite database | data/video_ai.sqlite3 | Stores metadata and analysis records for the MVP. |
+| Frontend app | frontend | Contains the React/Vite product web app, API client, components, hooks, views, tests, and styles. |
 | Automated tests | tests | Verifies upload behavior, frame extraction, timeline building, API contracts, and error cases. |
 | Project documentation | docs | Stores this software engineering specification and supporting diagrams. |
-| Setup files | requirements.txt, .env.example, README.md | Defines dependencies, environment variables, and user setup workflow. |
+| Setup files | requirements.txt, .env.example, README.md, frontend/package.json | Defines dependencies, environment variables, and user setup workflow. |
 
 **Application entry point.** The main file should stay thin. It should create the app, include routers, and configure startup behavior only.
 
@@ -591,7 +647,32 @@ Responsibilities:
 - Use Pydantic request and response schemas.
 - Avoid direct calls to FFmpeg, OpenCV, PySceneDetect, provider APIs, or database internals.
 
-### 8.3 Application Service Design
+### 8.3 Frontend Layer Design
+
+Primary location: `frontend/src`.
+
+Responsibilities:
+
+- Provide the local product interface for upload, status, analysis, timeline, and ask workflows.
+- Keep backend communication inside a typed frontend API client.
+- Keep reusable UI in components and workflow state in hooks.
+- Configure the backend API base URL through `VITE_API_BASE_URL`.
+- Display clear loading, empty, and safe error states.
+- Avoid adding authentication, ranking, embeddings, vector search, background queue behavior, or backend processing logic.
+
+Frontend structure:
+
+| Area | Responsibility |
+|---|---|
+| `frontend/src/api` | API client, response types, and user-facing error mapping. |
+| `frontend/src/components` | Reusable product UI components for upload, status, timeline, evidence, errors, and ask. |
+| `frontend/src/hooks` | Local workflow state for selected video, upload, status, analysis, timeline, and answer. |
+| `frontend/src/views` | Composed product workspace view. |
+| `frontend/src/styles` | Base styling and product layout. |
+| `frontend/src/utils` | Small formatting helpers such as time and file labels. |
+| `frontend/src/test` | Frontend test setup. |
+
+### 8.4 Application Service Design
 
 Application services coordinate the system workflows. They are allowed to call repositories and infrastructure adapters, but they should not contain low-level processing details.
 
@@ -602,7 +683,7 @@ Application services coordinate the system workflows. They are allowed to call r
 | `timeline_builder.py` | Group transcript segments, scenes, keyframes, and visual summaries into ordered scene/window timeline events with evidence links. |
 | `question_answerer.py` | Retrieve bounded stored evidence and generate answers through a replaceable answer provider with timestamp references. |
 
-### 8.4 Infrastructure Adapter Design
+### 8.5 Infrastructure Adapter Design
 
 Infrastructure adapters isolate external tools and APIs behind small local interfaces. This keeps the core application testable and makes later replacement easier.
 
@@ -615,7 +696,7 @@ Infrastructure adapters isolate external tools and APIs behind small local inter
 | `adapters/frame_analyzer.py` | Provider vision-language model | Visual summaries linked to frames and timestamps. |
 | `adapters/provider_factory.py` | Provider configuration | Selects active transcription and frame-analysis adapters. |
 
-### 8.5 Repository Design
+### 8.6 Repository Design
 
 Primary file: `app/repositories/video_repository.py`.
 
@@ -628,7 +709,7 @@ Responsibilities:
 - Retrieve video status and failure reason.
 - Keep database operations away from API route handlers and processing services.
 
-### 8.6 Domain Model Design
+### 8.7 Domain Model Design
 
 The domain model should represent the video memory created by the pipeline:
 
@@ -639,7 +720,7 @@ The domain model should represent the video memory created by the pipeline:
 - `TimelineEvent`: ordered description of what happened during a time interval.
 - `EvidenceLink`: link from an answer or timeline event back to transcript, frame, scene, or timeline evidence.
 
-### 8.7 Error Handling Design
+### 8.8 Error Handling Design
 
 The implementation should use controlled application exceptions instead of leaking raw tool or API failures into route handlers.
 
@@ -653,7 +734,7 @@ The implementation should use controlled application exceptions instead of leaki
 
 Internal logs may contain diagnostic details, but API responses must not expose API keys, local secrets, full stack traces, or sensitive file paths.
 
-### 8.8 Configuration Design
+### 8.9 Configuration Design
 
 Configuration should be loaded from environment variables through one central settings module.
 
@@ -677,9 +758,12 @@ Configuration should be loaded from environment variables through one central se
 | `FRAME_SAMPLE_SECONDS` | Frame sampling interval. | `2` |
 | `MAX_UPLOAD_MB` | Maximum upload size for local MVP uploads. | `250` |
 | `ALLOWED_VIDEO_EXTENSIONS` | Comma-separated list of accepted video extensions. | `mp4,mov` |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated local frontend origins allowed to call the API. | `http://127.0.0.1:5173,http://localhost:5173` |
+| `VITE_API_BASE_URL` | Frontend API base URL used by the React/Vite app. | `http://127.0.0.1:8000` |
 
-The `.env.example` file shall list every runtime setting without real secrets.
-Local `.env` files are developer-specific and must not be committed.
+The backend `.env.example` file shall list every backend runtime setting without real secrets.
+The frontend `.env.example` file shall list frontend-only public local settings.
+Local `.env` and `frontend/.env.local` files are developer-specific and must not be committed.
 
 ## 9. Data Design
 
@@ -690,7 +774,7 @@ The MVP uses local files for large media assets and SQLite for metadata. This sp
 | Asset | Storage Location | Notes |
 |---|---|---|
 | Uploaded videos | `data/uploads/{video_id}/original.ext` | Preserve original extension, avoid unsafe filenames. |
-| Extracted audio | `data/audio/{video_id}.mp3` | Generated by FFmpeg. |
+| Extracted audio | `data/audio/{video_id}/audio.wav` | Generated by FFmpeg. |
 | Keyframes | `data/frames/{video_id}/frame_000001.jpg` | Store frame timestamp in the database. |
 | SQLite database | `data/video_ai.sqlite3` | Metadata and analysis records only. |
 
@@ -761,7 +845,7 @@ The MVP should use SQLAlchemy for database access and SQLite as the database eng
 
 ## 10. API and Integration Design
 
-The API should remain intentionally small for the MVP. It should expose the core product behavior without forcing a frontend to exist before the backend is proven.
+The API should remain intentionally small for the MVP. It should expose the core product behavior and allow the M8 frontend to compose the product workflow without adding duplicate backend routes.
 
 The end-to-end API and integration flow is visualized in Appendix B.15. That swimlane diagram shows which layer owns each interaction and how REST calls, processing services, external tools, provider APIs, SQLite, and local files work together.
 
@@ -953,7 +1037,7 @@ All API errors should use one consistent response shape.
 }
 ```
 
-The `code` field should be stable enough for a future frontend to handle. The `message` field should be safe for users. The `details` object should never include API keys, stack traces, or private local paths.
+The `code` field should be stable enough for the frontend to handle. The `message` field should be safe for users. The `details` object should never include API keys, stack traces, or private local paths.
 
 ### 10.8 Pipeline Stage Contracts
 
@@ -977,6 +1061,24 @@ The `code` field should be stable enough for a future frontend to handle. The `m
 - Maximum upload size defaults to 250 MB for the local MVP and can be adjusted through `MAX_UPLOAD_MB`.
 - The first MVP should target short videos up to 2 minutes for predictable cost and processing time.
 
+### 10.10 Product Web App Integration
+
+The M8 product web app consumes the existing backend API without introducing a new analysis, retrieval, ranking, or storage contract.
+
+Frontend integration rules:
+
+- The frontend shall call `POST /videos/upload` for browser uploads.
+- The frontend shall call `GET /videos/{video_id}/status` for status refresh and polling.
+- The frontend shall call `POST /videos/{video_id}/analyze` to start synchronous analysis.
+- The frontend shall call `GET /videos/{video_id}/timeline` after analysis completes.
+- The frontend shall call `POST /videos/{video_id}/ask` only after the video is analyzed.
+- The frontend shall use `VITE_API_BASE_URL` for the backend base URL.
+- The backend shall use `CORS_ALLOWED_ORIGINS` to allow local Vite origins.
+- The frontend shall translate known backend error codes into safe product messages.
+- The frontend shall not expose backend stack traces, provider keys, or private local paths.
+
+M8 intentionally adds no authentication, background queue, vector search, embeddings, or ranking.
+
 ## Part IV. Verification, Release, and Supporting Models
 
 This part defines how the project will be verified, released, traced back to requirements, and supported with diagrams. It keeps testing, release readiness, glossary terms, and appendix models connected to the requirements and design decisions above.
@@ -998,6 +1100,8 @@ Unit tests should cover:
 - Bounded ask evidence retrieval from timeline, transcript, and frame records.
 - Insufficient-evidence answer generation.
 - Error handling for missing video IDs and invalid states.
+- Frontend user-facing error mapping.
+- Frontend time and evidence formatting helpers.
 
 ### 11.2 Integration Tests
 
@@ -1012,31 +1116,36 @@ Integration tests should cover:
 - Rejecting empty ask questions.
 - Returning 404 for missing ask videos.
 - Returning timestamped evidence with ask answers.
+- Allowing the local Vite frontend origin through backend CORS.
+- Building and type-checking the frontend application.
 
 ### 11.3 Manual Acceptance Test
 
-The backend MVP is acceptable when a product owner, developer, or QA tester can complete the following workflow
-with a short `.mp4` or `.mov` video through Swagger UI:
+The M8 local MVP is acceptable when a product owner, developer, or QA tester can complete the following workflow
+with a short `.mp4` or `.mov` video through the product web app:
 
 - Start the API server with `uvicorn app.main:app --reload`.
-- Open `http://127.0.0.1:8000/docs`.
-- Upload a video through `POST /videos/upload` and record the returned `video_id`.
-- Confirm `GET /videos/{video_id}/status` returns `uploaded`.
-- Run `POST /videos/{video_id}/analyze`.
-- Confirm the analyze response returns `analyzed` plus transcript, keyframe, scene, and timeline counts.
-- Confirm `GET /videos/{video_id}/timeline` returns ordered timestamped timeline events.
+- Start the frontend with `cd frontend && npm run dev -- --host 127.0.0.1`.
+- Open `http://127.0.0.1:5173`.
+- Upload a supported short video from the web app.
+- Confirm the status panel shows `uploaded`.
+- Run analysis from the web app.
+- Confirm the status panel shows `analyzed` plus transcript, keyframe, scene, and timeline counts.
+- Confirm the timeline view shows ordered timestamped timeline events.
 - Confirm timeline events include evidence references to stored transcript, frame, or scene records.
-- Ask a non-empty question through `POST /videos/{video_id}/ask`.
-- Confirm the ask response includes an answer and timestamped evidence.
+- Ask a non-empty question through the web app.
+- Confirm the answer panel includes an answer and timestamped evidence.
 - Repeat the ask request and confirm the video remains analyzed without requiring upload or preprocessing to run again.
 
 Manual acceptance requires a configured provider key and FFmpeg installed locally.
 If the workflow fails, use the troubleshooting guidance in
 Section 12.5 before treating the release as blocked.
 
-### 11.4 M7 Automated Verification
+Swagger UI at `http://127.0.0.1:8000/docs` remains available for backend API inspection and fallback manual debugging.
 
-M7 delivery readiness requires these local checks before opening or merging a pull request:
+### 11.4 Automated Verification
+
+M7 delivery readiness requires these backend checks before opening or merging a pull request:
 
 ```bash
 ruff check app tests
@@ -1045,6 +1154,24 @@ pytest
 
 The automated tests must use fake providers or local test doubles. They must not
 call external provider APIs or require real provider credentials.
+
+M8 product web app delivery also requires these frontend checks:
+
+```bash
+cd frontend
+npm run check
+npm run lint
+npm test
+npm run build
+```
+
+Frontend dependency audit should be checked before delivery:
+
+```bash
+cd frontend
+npm audit --omit=dev
+npm audit --audit-level=moderate
+```
 
 ## 12. Implementation and Release Plan
 
@@ -1059,33 +1186,35 @@ call external provider APIs or require real provider credentials.
 | M5: Scene/window timeline builder | Stored transcript, frames, scenes, visual summaries, timeline events, and evidence links. |
 | M6: Ask video | Question endpoint, evidence retrieval, answer generation, timestamped evidence. |
 | M7: Delivery readiness and verification | README workflow, `.env.example` coverage, manual acceptance checklist, known limitations, troubleshooting, runtime artifact controls, and local checks. |
+| M8: Product web app foundation | React/Vite local product app for upload, status, analysis, timeline, ask, evidence display, safe errors, and frontend verification. |
 
 ### 12.2 Release Scope
 
 Included in the first MVP:
 
 - FastAPI backend.
-- Swagger UI workflow.
+- React/Vite local product web app.
+- Swagger UI API documentation and fallback workflow.
 - Local file storage.
 - SQLite metadata.
 - Video upload and analysis.
 - Timeline retrieval.
 - Question answering with timestamped evidence.
 - Automated tests with mocked AI clients.
+- Frontend type-check, lint, test, and build commands.
 
 Deferred from the first MVP:
 
 - User accounts and authentication.
-- React dashboard.
 - Redis and Celery background jobs.
 - PostgreSQL production migration.
 - Cloud object storage.
 - Embedding-based semantic search.
 - Custom model training.
+- Hosted production deployment.
+- In-browser serving of extracted frame image files.
 
-M7 is a release-readiness milestone for the backend. It does not add UI screens,
-new public endpoints, ranking, embeddings, vector search, background processing,
-or production deployment architecture.
+M8 adds the first product web app while preserving the backend architecture and API scope. It does not add new public product endpoints, ranking, embeddings, vector search, background processing, authentication, or production deployment architecture.
 
 ### 12.3 GitHub Release Readiness
 
@@ -1094,25 +1223,29 @@ Before the first GitHub release, the repository should include:
 - Clear README setup steps.
 - `requirements.txt`.
 - `.env.example`.
+- `frontend/package.json`.
+- `frontend/.env.example`.
 - Test command.
 - Documented API workflow.
+- Documented product web app workflow.
 - Project structure matching this specification.
 - A short note explaining that the project is a pipeline-based video understanding engine, not a custom-trained model.
 - Manual acceptance checklist for upload, analyze, timeline, and ask.
-- Known limitations for the backend MVP.
+- Known limitations for the local MVP.
 - Troubleshooting for local setup failures.
 - `.gitignore` rules that exclude local `.env`, SQLite databases, uploaded media, extracted audio, and extracted frames.
+- `.gitignore` rules that exclude frontend `node_modules`, build output, local frontend env files, and TypeScript build info.
 
 ### 12.4 Known Limitations
 
-The M7 backend MVP has the following known limitations:
+The M8 local MVP has the following known limitations:
 
-- No custom web UI is included. Swagger UI is the local product interface for the backend MVP.
 - No authentication, authorization, user accounts, or multi-tenant data isolation.
 - No background queue. Analysis runs synchronously in the API process.
 - No ranking, embeddings, vector search, or deep retrieval mode. Question answering uses stored evidence only.
 - No production storage layer. SQLite and local `data/` folders are intended for local MVP verification.
 - No production deployment hardening such as HTTPS termination, cloud storage, worker scaling, monitoring, or backup policy.
+- Extracted frame evidence is shown as timestamped frame references; serving the extracted frame image files inside the browser is deferred.
 
 ### 12.5 Local Troubleshooting
 
@@ -1125,6 +1258,8 @@ Common local issues and expected responses:
 | Provider key missing | Analysis fails when provider-backed transcription or frame analysis starts. | Set the matching provider key in local `.env`, restart Uvicorn, and retry analysis. |
 | SQLite or local data confusion | Old uploads, frames, audio, or database records affect a manual run. | Stop the server, clear local runtime files under `data/` as needed, keep `.gitkeep` files, then restart. |
 | `.env` changes not taking effect | Server still uses old settings. | Restart Uvicorn after editing `.env`. |
+| Frontend cannot reach backend | Web app shows backend offline or requests fail in the browser. | Start Uvicorn, confirm `VITE_API_BASE_URL`, and confirm `CORS_ALLOWED_ORIGINS` includes the Vite origin. |
+| Port 5173 already in use | Vite cannot bind to `127.0.0.1:5173`. | Stop the process using 5173 or run Vite on another port and update backend CORS plus frontend base URL settings. |
 
 ## 13. Traceability Matrix
 
@@ -1142,8 +1277,9 @@ This matrix connects requirements to implementation modules and planned verifica
 | Timeline generation | FR-18 to FR-20 | `timeline_builder.py`, timeline repository methods, `/videos/{video_id}/timeline` | Timeline ordering test, evidence link test, and timeline API test. |
 | Video question answering | FR-22 to FR-28a | `question_answerer.py`, evidence retrieval methods, `/videos/{video_id}/ask` | Success, missing video, not analyzed, empty question, insufficient evidence, and timestamped evidence tests. |
 | Storage and retrieval | FR-29 to FR-35, NFR-19 | `db/models.py`, `video_repository.py` | Repository tests with temporary SQLite database. |
-| Security and configuration | NFR-6 to NFR-14 | `config.py`, upload validation, API error handling | Env var test, rejected extension test, no-secret-response check. |
-| Release readiness | OR-1 to OR-8 | README, `.env.example`, `.gitignore`, test suite, software engineering specification | Manual acceptance checklist, runtime artifact review, `ruff check app tests`, and `pytest`. |
+| Product web app | FR-36 to FR-45, NFR-20 to NFR-22 | `frontend/src`, `frontend/package.json`, `app/main.py`, `config.py` | Frontend type-check, lint, tests, build, browser workflow verification, and CORS preflight test. |
+| Security and configuration | NFR-6 to NFR-14, NFR-21 to NFR-22 | `config.py`, upload validation, API error handling, frontend error mapping | Env var test, rejected extension test, no-secret-response check, CORS test, frontend error mapping test. |
+| Release readiness | OR-1 to OR-10 | README, `.env.example`, `frontend/.env.example`, `.gitignore`, test suite, software engineering specification | Manual acceptance checklist, runtime artifact review, backend checks, frontend checks, and dependency audit. |
 
 ## Appendix A: Glossary
 
@@ -1159,6 +1295,9 @@ This matrix connects requirements to implementation modules and planned verifica
 | ERD | Entity Relationship Diagram, a diagram that shows database entities and relationships. |
 | API | Application Programming Interface, the HTTP endpoints used by clients. |
 | Evidence | Timestamped transcript, frame, scene, or timeline data used to support an answer. |
+| React | Frontend UI library used by the local product web app. |
+| Vite | Frontend development server and build tool used by the local product web app. |
+| CORS | Cross-Origin Resource Sharing, browser policy configuration that lets the local frontend call the local backend. |
 
 ## Appendix B: Analysis Models and Diagrams
 
@@ -1197,6 +1336,7 @@ The use case diagram identifies the main system functions visible to the primary
 | View Timeline | Primary User, QA Tester | User retrieves timestamped timeline events. | FR-18 to FR-20, FR-34 |
 | Ask Question About Video | Primary User, QA Tester | User asks natural-language questions about a processed video. | FR-22 to FR-28 |
 | View Timestamped Evidence | Primary User, QA Tester | System returns timestamps, frames, and timeline evidence with answers. | FR-20, FR-25 |
+| Use Product Web App | Primary User, QA Tester | User completes upload, analyze, timeline, and ask from the local web app. | FR-36 to FR-45 |
 
 ### B.4 System Context Diagram
 
@@ -1256,7 +1396,7 @@ The state diagram defines valid analysis states and prevents ambiguous behavior.
 
 The component diagram shows the MVP backend modules as large owning components with their subcomponents inside them. It separates API ownership, application services, domain objects, infrastructure adapters, persistence, and external tools.
 
-![Component Diagram](diagrams/component_diagram.png)
+![Component Diagram](diagrams/component_diagram_clean.png)
 
 ### B.14 Deployment Diagram
 
@@ -1301,7 +1441,7 @@ This swimlane diagram shows the API and integration flow across the user/client,
 |---|---|
 | TBD-1 | Confirm exact external API models, versions, and documentation references before implementation. |
 | TBD-2 | Review whether the 250 MB local MVP upload limit should change for any future hosted deployment. |
-| TBD-3 | Confirm scope and timing for a future web frontend milestone after the backend MVP. |
+| TBD-3 | Resolved in M8: product web app foundation implemented with React/Vite for the local MVP. |
 | TBD-4 | Confirm final database choice for the MVP: SQLite or PostgreSQL. |
 | TBD-5 | Confirm expected video duration and resolution limits for product validation. |
 | TBD-6 | Confirm final ownership and maintainer details for the specification cover page if required. |

@@ -15,7 +15,7 @@ from docx.shared import Inches, Pt, RGBColor
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "docs" / "Software_Engineering_Specification.md"
-OUTPUT = ROOT / "docs" / "Multimodal_Video_Understanding_Engine_SES_v0.5.docx"
+OUTPUT = ROOT / "docs" / "Multimodal_Video_Understanding_Engine_SES_v0.6.docx"
 
 DIAGRAM_IMAGES = {
     "B.2 Use Case Diagram": "use_case_diagram.png",
@@ -28,7 +28,7 @@ DIAGRAM_IMAGES = {
     "B.10 Domain Class Diagram": "domain_class_diagram.png",
     "B.11 Entity Relationship Diagram": "erd.png",
     "B.12 Video Status State Diagram": "video_status_state_diagram.png",
-    "B.13 Component Diagram": "component_diagram.png",
+    "B.13 Component Diagram": "component_diagram_clean.png",
     "B.14 Deployment Diagram": "deployment_diagram.png",
     "B.15 API and Integration Swimlane Diagram": "api_integration_swimlane.png",
 }
