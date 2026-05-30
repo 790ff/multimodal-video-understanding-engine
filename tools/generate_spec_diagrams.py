@@ -527,7 +527,7 @@ def state_diagram() -> None:
 
 
 def component() -> None:
-    d = Diagram("Component Diagram", 2400, 2100)
+    d = Diagram("Component Diagram", 2400, 2300)
 
     def group(xy, title: str, items: list[str], cols: int = 2):
         x1, y1, x2, y2 = xy
@@ -551,20 +551,25 @@ def component() -> None:
             by1 = content_top + row * (item_h + row_gap)
             d.box((bx1, by1, bx1 + item_w, by1 + item_h), item, COLORS["gray"], fnt=SMALL_BOLD, radius=12)
 
-    group((120, 150, 2280, 355), "Frontend Layer", [
+    left_x1, left_x2 = 120, 1120
+    right_x1, right_x2 = 1300, 2280
+    left_mid_x = (left_x1 + left_x2) // 2
+    right_mid_x = (right_x1 + right_x2) // 2
+
+    group((120, 150, 2280, 360), "Frontend Layer", [
         "React views",
         "API client",
         "workflow hook",
         "product components",
         "styles and tests",
     ], cols=5)
-    group((120, 455, 1120, 760), "API Layer", [
+    group((left_x1, 480, left_x2, 795), "API Layer", [
         "videos.py routes",
         "Pydantic schemas",
         "error response mapper",
         "request validation",
     ])
-    group((120, 850, 1120, 1245), "Application Services", [
+    group((left_x1, 915, left_x2, 1345), "Application Services", [
         "video_storage.py",
         "video_processor.py",
         "timeline_builder.py",
@@ -572,19 +577,19 @@ def component() -> None:
         "status workflow",
         "evidence retrieval",
     ])
-    group((120, 1335, 1120, 1640), "Domain Layer", [
+    group((left_x1, 1465, left_x2, 1780), "Domain Layer", [
         "entities.py",
         "statuses.py",
         "errors.py",
         "evidence types",
     ])
-    group((120, 1730, 1120, 2035), "Persistence Layer", [
+    group((left_x1, 1900, left_x2, 2215), "Persistence Layer", [
         "video_repository.py",
         "db/models.py",
         "SQLite metadata",
         "migration-ready schema",
     ])
-    group((1300, 850, 2280, 1245), "Infrastructure Adapters", [
+    group((right_x1, 915, right_x2, 1345), "Infrastructure Adapters", [
         "audio_extractor.py",
         "transcriber.py",
         "frame_extractor.py",
@@ -592,7 +597,7 @@ def component() -> None:
         "frame_analyzer.py",
         "file storage adapter",
     ])
-    group((1300, 1335, 2280, 1720), "External Tools and APIs", [
+    group((right_x1, 1465, right_x2, 1895), "External Tools and APIs", [
         "FFmpeg",
         "OpenCV",
         "PySceneDetect",
@@ -601,13 +606,13 @@ def component() -> None:
         "Local file system",
     ])
 
-    d.arrow((620, 355), (620, 455), label="HTTP calls")
-    d.arrow((620, 760), (620, 850), label="calls services")
-    d.arrow((620, 1245), (620, 1335), label="uses domain model")
-    d.arrow((620, 1640), (620, 1730), label="persists through repository")
-    d.arrow((1120, 1048), (1300, 1048), label="uses adapters")
-    d.arrow((1790, 1245), (1790, 1335), label="wraps")
-    d.orthogonal_arrow([(1300, 1500), (1215, 1500), (1215, 1822), (1120, 1822)], label="file paths and metadata")
+    d.arrow((left_mid_x, 360), (left_mid_x, 480), label="HTTP calls")
+    d.arrow((left_mid_x, 795), (left_mid_x, 915), label="calls services")
+    d.arrow((left_mid_x, 1345), (left_mid_x, 1465), label="uses domain model")
+    d.arrow((left_mid_x, 1780), (left_mid_x, 1900), label="persists through repository")
+    d.arrow((left_x2, 1130), (right_x1, 1130), label="uses adapters")
+    d.arrow((right_mid_x, 1345), (right_mid_x, 1465), label="wraps")
+    d.orthogonal_arrow([(left_x2, 2058), (1215, 2058), (1215, 1680), (right_x1, 1680)], label="file paths and metadata")
     d.save("component_diagram.png")
 
 
