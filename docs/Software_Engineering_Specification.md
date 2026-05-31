@@ -4,7 +4,7 @@ for
 
 # Multimodal Video Understanding Engine
 
-Version 0.7 Draft
+Version 0.8 Draft
 
 Prepared by Thamer
 
@@ -21,6 +21,7 @@ Date: 2026-05-31
 | Thamer | 2026-05-29 | Added M7 delivery readiness, manual acceptance checklist, known limitations, local troubleshooting, and runtime artifact controls | 0.5 |
 | Thamer | 2026-05-31 | Added M8 product web app foundation, frontend structure, local CORS configuration, browser workflow, frontend checks, and updated release scope | 0.6 |
 | Thamer | 2026-05-31 | Added M9 frontend product hardening, progress and recovery states, safe error categories, accessibility basics, responsive verification, and mocked frontend flow tests | 0.7 |
+| Thamer | 2026-05-31 | Added M10 backend processing lifecycle, retry and reanalysis rules, partial-output cleanup and reuse rules, controlled runtime error categories, and lifecycle regression tests | 0.8 |
 
 ## Table of Contents
 
@@ -45,6 +46,8 @@ For M7, this document also covers delivery readiness for the backend MVP: repeat
 For M8, this document also covers the first product web app foundation. M8 introduces a local React/Vite interface over the existing backend APIs for upload, status, analysis, timeline inspection, and question answering. M8 does not introduce authentication, vector search, embeddings, ranking, background queues, or a backend architecture rewrite.
 
 For M9, this document also covers frontend product hardening. M9 improves upload progress, analysis progress, retry and recovery states, actionable safe errors, responsive layout behavior, accessibility basics, and frontend test coverage with mocked backend responses. M9 does not introduce user accounts, analytics, tracking, a visual redesign, new public backend endpoints, or a backend processing architecture rewrite.
+
+For M10, this document also covers backend reliability and the processing lifecycle. M10 makes status transitions, retry, reanalysis, partial-output cleanup, durable output reuse, controlled runtime error categories, and the queue-ready job boundary explicit. M10 does not add a distributed worker system, frontend redesign, retrieval ranking changes, accounts, roles, analytics, tracking, or new public product endpoints.
 
 ### 1.2 Document Conventions
 
@@ -129,6 +132,8 @@ The product must provide the following major functions:
 - Show upload progress, analysis progress, and retry or recovery states in the product web app.
 - Show actionable safe frontend errors for provider configuration, FFmpeg/media processing, failed analysis, unsupported files, and server connectivity.
 - Support reasonable desktop and mobile layouts with basic accessibility affordances for the core workflow.
+- Support safe backend retry and reanalysis without duplicated or stale timeline and evidence records.
+- Preserve reusable durable processing outputs where safe, including extracted audio, keyframe files, and scene records.
 
 ### 2.3 User Classes and Characteristics
 
@@ -406,6 +411,37 @@ The system shall provide a local product web app so a product owner, developer, 
 - FR-50: The web app shall support reasonable desktop and mobile viewport widths for the core workflow.
 - FR-51: The web app shall include accessibility basics for the core workflow, including labeled controls, alert semantics, progress semantics, focus states, and busy states.
 
+### 4.7 Backend Processing Lifecycle
+
+#### 4.7.1 Description and Priority
+
+Priority: High.
+
+The backend shall treat analysis as a job-like workflow even while it still runs synchronously in the API process. The lifecycle must make retry after failure and explicit reanalysis predictable for the product web app and for future queue or worker extraction.
+
+#### 4.7.2 Stimulus/Response Sequences
+
+1. User requests analysis for a video in `uploaded`, `failed`, or `analyzed` status.
+2. System creates a processing job boundary, marks the video `processing`, clears the previous safe failure reason, clears volatile analysis outputs, and keeps reusable durable outputs only when they are valid.
+3. System runs the pipeline stages with controlled checkpoints for reusable audio, keyframes, and scenes.
+4. System writes transcript segments, visual summaries, timeline events, and evidence links for the current run.
+5. System marks the video `analyzed` when the run completes.
+6. If a controlled or runtime failure occurs, system rolls back volatile outputs, cleans unsafe partial files, marks the video `failed`, and returns a safe error code and message.
+
+#### 4.7.3 Functional Requirements
+
+- FR-52: The system shall reject analysis requests for videos already in `processing`.
+- FR-53: The system shall allow retry from `failed` to `processing`.
+- FR-54: The system shall allow explicit reanalysis from `analyzed` to `processing`.
+- FR-55: The system shall clear stale transcript, timeline, evidence, and keyframe visual-summary outputs at the start of a new analysis job.
+- FR-56: The system shall reuse nonempty extracted audio files when safe.
+- FR-57: The system shall reuse keyframe metadata only when every referenced keyframe file exists and is nonempty.
+- FR-58: The system shall remove partial frame output directories when frame extraction fails before a durable checkpoint.
+- FR-59: The system shall reuse stored scene records when safe and shall fall back to keyframe-based scene windows when scene detection fails.
+- FR-60: The system shall rebuild transcript, visual summaries, timeline events, and evidence links for each successful analysis run.
+- FR-61: The system shall return controlled backend error codes for audio extraction, frame extraction, scene detection fallback, transcription or provider configuration, frame analysis or provider configuration, timeline or evidence generation, and storage/runtime failures.
+- FR-62: The system shall keep the backend job boundary local and queue-ready without adding Redis, Celery, or a distributed worker system in M10.
+
 ## 5. Other Nonfunctional Requirements
 
 ### 5.1 Performance Requirements
@@ -444,6 +480,7 @@ The system shall provide a local product web app so a product owner, developer, 
 - NFR-23: The frontend shall remain usable at common desktop and mobile viewport widths without overlapping controls or unreadable workflow content.
 - NFR-24: The frontend shall provide accessibility basics for product operation, including visible focus states, semantic alerts, progress indicators, labeled form controls, and busy-state hints.
 - NFR-25: Frontend tests shall cover the upload, analyze, timeline, and ask workflows plus key state transitions using mocked backend responses.
+- NFR-26: Backend processing lifecycle tests shall cover retry after failed analysis, explicit reanalysis, partial-output cleanup, idempotent reuse, processing conflicts, and safe error/status behavior.
 
 ### 5.5 Business Rules
 
@@ -465,6 +502,7 @@ The system shall provide a local product web app so a product owner, developer, 
 - OR-8: Local secrets, SQLite databases, uploaded media, extracted audio, and extracted frames shall remain out of source control.
 - OR-9: The project shall include frontend check, test, and build commands for the M8 and M9 web app.
 - OR-10: The project shall document local frontend setup and API base URL configuration.
+- OR-11: The project shall document backend lifecycle rules before M10 delivery is considered complete.
 
 ## Part II. Software Architecture
 
@@ -485,7 +523,7 @@ This section defines the architectural foundation for the MVP. The purpose is to
 
 ### 7.2 Architectural Style: Modular Monolith
 
-The backend will run as one FastAPI application. Internally, the application will be divided into modules by responsibility. The M8 and M9 product web app will run as a separate local React/Vite frontend that consumes the existing backend API. This avoids the complexity of early microservices while still preventing the codebase from becoming one large script.
+The backend will run as one FastAPI application. Internally, the application will be divided into modules by responsibility. The M8 and M9 product web app will run as a separate local React/Vite frontend that consumes the existing backend API. M10 keeps the backend as a modular monolith while making the analysis workflow job-like and queue-ready inside the application layer. This avoids the complexity of early microservices while still preventing the codebase from becoming one large script.
 
 Architectural rules:
 
@@ -521,7 +559,7 @@ The MVP API should remain small and explicit:
 
 The API should return clear error responses for invalid input, unsupported files, missing video records, ask-before-analysis conflicts, failed processing, and missing configuration.
 
-The M8 and M9 frontend should consume these endpoints without requiring new product API endpoints. Local browser access is enabled by a configurable CORS allowlist, not by weakening API contracts or serving runtime media folders publicly.
+The M8, M9, and M10 work should consume these endpoints without requiring new product API endpoints. Local browser access is enabled by a configurable CORS allowlist, not by weakening API contracts or serving runtime media folders publicly.
 
 ### 7.5 Pipeline Orchestration
 
@@ -531,9 +569,9 @@ Pipeline steps:
 
 1. Validate and store the uploaded video.
 2. Extract audio from the video.
-3. Transcribe audio and preserve timestamps when available.
-4. Extract keyframes at a configurable interval.
-5. Detect scene boundaries.
+3. Extract keyframes at a configurable interval.
+4. Detect scene boundaries or create keyframe-based fallback windows.
+5. Transcribe audio and preserve timestamps when available.
 6. Analyze selected frames.
 7. Build scene/window timeline events from transcript, scenes, keyframes, and visual summaries.
 8. Store analysis results for reuse.
@@ -564,6 +602,10 @@ Async-ready rules:
 - Expose status through an API endpoint.
 - Keep pipeline steps idempotent where practical.
 - Make retry from `failed` to `processing` explicit.
+- Make reanalysis from `analyzed` to `processing` explicit.
+- Represent each analysis run with a local job boundary that owns the video path, output paths, and current processing stage.
+- Commit durable reusable checkpoints only after the relevant stage succeeds.
+- Keep volatile outputs out of the committed successful state until the full run completes.
 - Avoid keeping processing state only in memory.
 
 ### 7.8 Error and Status Handling
@@ -576,6 +618,23 @@ Valid video states:
 - `failed`
 
 The system should use controlled exceptions for validation errors, not found errors, conflict errors, processing errors, and configuration errors. It must not expose stack traces, API keys, or internal secrets through API responses. When processing fails, the failure reason should be saved safely on the video record.
+
+Status transition rules:
+
+- `uploaded`, `failed`, and `analyzed` may transition to `processing` when the user starts analysis.
+- `processing` may transition to `analyzed` only after transcript, frame summaries, timeline events, and evidence links for the current run are stored successfully.
+- `processing` may transition to `failed` after any controlled or runtime failure.
+- A request to analyze a video already in `processing` returns a conflict and does not start another run.
+
+Safe processing error categories:
+
+- `audio_extraction_failed` for FFmpeg or audio extraction failures.
+- `frame_extraction_failed`, `frame_extraction_unavailable`, or `frame_write_failed` for frame extraction failures.
+- `scene_detection_failed` or `scene_detection_unavailable` when scene detection cannot run; the processor should use fallback windows when keyframes are available.
+- `transcription_not_configured`, `transcription_dependency_missing`, `transcription_failed`, or `transcription_invalid_response` for transcription/provider failures.
+- `frame_analysis_not_configured`, `frame_analysis_dependency_missing`, `frame_analysis_failed`, `frame_analysis_empty`, or `frame_analysis_incomplete` for frame analysis/provider failures.
+- `timeline_no_evidence`, `timeline_generation_failed`, or `timeline_evidence_missing` for timeline and evidence failures.
+- `processing_storage_failed`, `video_storage_failed`, or `metadata_storage_failed` for storage/runtime failures.
 
 ### 7.9 Testability
 
@@ -699,8 +758,19 @@ Application services coordinate the system workflows. They are allowed to call r
 |---|---|
 | `video_storage.py` | Validate file metadata, generate safe names, store uploaded videos, and create video records. |
 | `video_processor.py` | Orchestrate the full analysis workflow and status transitions. |
+| `processing_lifecycle.py` | Define the local analysis job boundary, processing stages, and default stage-level error categories. |
 | `timeline_builder.py` | Group transcript segments, scenes, keyframes, and visual summaries into ordered scene/window timeline events with evidence links. |
 | `question_answerer.py` | Retrieve bounded stored evidence and generate answers through a replaceable answer provider with timestamp references. |
+
+M10 lifecycle rules:
+
+- The processor starts a local `AnalysisJob` for each analysis request. The job owns the video path, audio output path, frame output directory, and current stage.
+- The processor clears transcript, timeline, evidence, and keyframe visual-summary outputs at job start so retry and reanalysis cannot expose stale timeline memory.
+- Extracted audio is reused when the file already exists and is nonempty.
+- Keyframe metadata is reused only when every referenced frame file exists and is nonempty. If frame extraction fails before a durable checkpoint, the partial frame directory is removed.
+- Scene records may be reused for the same video. If scene detection fails safely, keyframe-based fallback windows are stored.
+- Transcript segments, frame summaries, timeline events, and evidence links are rebuilt for each successful run.
+- No distributed worker is introduced in M10; the job boundary exists so the same stages can move to a queue/job runner later.
 
 ### 8.5 Infrastructure Adapter Design
 
@@ -750,8 +820,12 @@ The implementation should use controlled application exceptions instead of leaki
 | Conflict | Ask before analysis completes | 409 |
 | Processing error | FFmpeg fails or video is corrupted | 500 with safe message |
 | Configuration error | Missing API key | 500 with safe message |
+| Runtime lifecycle error | Stage-specific uncaught local failure | 500 with safe message and controlled code |
+| Storage error | Database or local file checkpoint failure | 500 with safe message |
 
 Internal logs may contain diagnostic details, but API responses must not expose API keys, local secrets, full stack traces, or sensitive file paths.
+
+For analysis failures, the API should return the safe message `Video analysis failed.` while preserving a stable error code that the frontend can map. The video status endpoint should report `failed` with the same safe failure message, not the raw provider or local exception text.
 
 ### 8.9 Configuration Design
 
@@ -793,8 +867,8 @@ The MVP uses local files for large media assets and SQLite for metadata. This sp
 | Asset | Storage Location | Notes |
 |---|---|---|
 | Uploaded videos | `data/uploads/{video_id}/original.ext` | Preserve original extension, avoid unsafe filenames. |
-| Extracted audio | `data/audio/{video_id}/audio.wav` | Generated by FFmpeg. |
-| Keyframes | `data/frames/{video_id}/frame_000001.jpg` | Store frame timestamp in the database. |
+| Extracted audio | `data/audio/{video_id}/audio.wav` | Generated by FFmpeg and reused when nonempty. |
+| Keyframes | `data/frames/{video_id}/frame_000001.jpg` | Store frame timestamp in the database; remove partial frame directories when extraction fails before checkpoint. |
 | SQLite database | `data/video_ai.sqlite3` | Metadata and analysis records only. |
 
 ### 9.2 Database Entities
@@ -832,6 +906,13 @@ Indexes should be driven by the way the API reads video memory. The MVP will rep
 | `processing` | Analysis pipeline is currently running. | `analyzed`, `failed` |
 | `analyzed` | Analysis completed successfully. | `processing` for explicit reanalysis, future `archived` |
 | `failed` | Analysis failed and safe error details are available. | `processing` for retry |
+
+M10 transition rules:
+
+- Starting analysis from `uploaded`, `failed`, or `analyzed` clears the previous safe error message and moves the video to `processing`.
+- Starting analysis from `processing` is rejected with `video_already_processing`.
+- Successful completion moves the video to `analyzed` and clears the safe error message.
+- Controlled or runtime failure moves the video to `failed` and stores only a safe failure message for the status endpoint.
 
 ### 9.5 Implementation Schema Summary
 
@@ -916,7 +997,14 @@ Error cases:
 
 - 404 if the video does not exist.
 - 409 if the video is already processing.
-- 500 if analysis fails.
+- 500 if analysis fails. The error envelope shall use a controlled code such as `audio_extraction_failed`, `frame_extraction_failed`, `transcription_not_configured`, `frame_analysis_failed`, `timeline_generation_failed`, or `processing_storage_failed`, with the safe message `Video analysis failed.`.
+
+Lifecycle behavior:
+
+- `failed` videos may be retried through the same endpoint.
+- `analyzed` videos may be explicitly reanalyzed through the same endpoint.
+- Retry and reanalysis shall not duplicate transcript, timeline, or evidence records.
+- Timeline and evidence records from a previous run shall be cleared before new analysis begins.
 
 ### 10.3 Get Video Status
 
@@ -931,6 +1019,8 @@ Response:
   "error_message": null
 }
 ```
+
+When status is `failed`, `error_message` contains only the safe product message saved by the backend. It must not contain provider secrets, stack traces, or private local paths.
 
 Error cases:
 
@@ -1064,12 +1154,13 @@ The `code` field should be stable enough for the frontend to handle. The `messag
 |---|---|---|---|
 | Validate upload | Uploaded file metadata and bytes | Safe filename, extension decision, size decision | Reject request with validation error. |
 | Store video | Validated upload | Video record and local path | Return storage error and do not create partial analysis records. |
-| Extract audio | Stored video path | Audio path | Mark video `failed` if FFmpeg cannot read the file. |
-| Transcribe audio | Audio path | Transcript segments | Mark video `failed` if transcription is required and unavailable. |
-| Extract keyframes | Video path and sample interval | Keyframe paths and timestamps | Mark video `failed` if the video cannot be decoded. |
-| Detect scenes | Video path | Scene records | Continue with interval-based pseudo-scenes if scene detection fails safely. |
-| Analyze frames | Selected keyframes | Visual summaries | Mark video `failed` if visual analysis is required; allow future partial mode as a later enhancement. |
-| Build timeline | Transcript, keyframes, scenes, visual summaries | Scene/window timeline events and evidence links | Mark video `failed` if no usable evidence exists. |
+| Start analysis job | Video record in `uploaded`, `failed`, or `analyzed` | `processing` status, cleared safe error, cleared volatile outputs | Return conflict when the video is already `processing`. |
+| Extract or reuse audio | Stored video path | Nonempty audio path | Reuse existing audio when nonempty; mark video `failed` with `audio_extraction_failed` if FFmpeg/audio extraction fails. |
+| Extract or reuse keyframes | Video path and sample interval | Durable keyframe paths and timestamps | Reuse only when every referenced file exists and is nonempty; remove partial frame output directories when extraction fails before checkpoint. |
+| Detect or reuse scenes | Video path and keyframes | Scene records or fallback windows | Reuse stored scenes when safe; continue with keyframe-based fallback windows if scene detection fails safely. |
+| Transcribe audio | Audio path | Transcript segments | Rebuild transcript for each successful run; mark video `failed` if transcription is required and unavailable. |
+| Analyze frames | Selected keyframes | Visual summaries | Rebuild visual summaries for each successful run; mark video `failed` if visual analysis is required; allow future partial mode as a later enhancement. |
+| Build timeline | Transcript, keyframes, scenes, visual summaries | Scene/window timeline events and evidence links | Replace timeline and evidence for the current run; mark video `failed` if no usable evidence exists. |
 | Answer question | Question and stored video memory | Answer with evidence | Return conflict if video is not analyzed; return insufficient-evidence answer when evidence is weak. |
 
 ### 10.9 Request Limits and Identifier Rules
@@ -1082,7 +1173,7 @@ The `code` field should be stable enough for the frontend to handle. The `messag
 
 ### 10.10 Product Web App Integration
 
-The M8 and M9 product web app consumes the existing backend API without introducing new analysis, retrieval, ranking, or storage contracts.
+The M8 and M9 product web app consumes the existing backend API without introducing new analysis, retrieval, ranking, or storage contracts. M10 keeps the same public API and strengthens the backend lifecycle behind `POST /videos/{video_id}/analyze`.
 
 Frontend integration rules:
 
@@ -1099,7 +1190,7 @@ Frontend integration rules:
 - The frontend shall keep retry and recovery state inside the workflow state layer rather than duplicating backend processing logic.
 - The frontend shall keep API client, components, views, hooks/state, utilities, and styles in separate frontend source areas.
 
-M8 and M9 intentionally add no authentication, background queue, vector search, embeddings, ranking, analytics, tracking, or public media-serving endpoint.
+M8, M9, and M10 intentionally add no authentication, background queue, vector search, embeddings, ranking, analytics, tracking, or public media-serving endpoint.
 
 ## Part IV. Verification, Release, and Supporting Models
 
@@ -1122,6 +1213,7 @@ Unit tests should cover:
 - Bounded ask evidence retrieval from timeline, transcript, and frame records.
 - Insufficient-evidence answer generation.
 - Error handling for missing video IDs and invalid states.
+- Analysis lifecycle stage behavior, reusable output checkpoints, and safe stage-level error categories.
 - Frontend user-facing error mapping.
 - Frontend time and evidence formatting helpers.
 - Frontend progress, retry, and recovery state transitions where they are handled in local workflow state.
@@ -1139,6 +1231,12 @@ Integration tests should cover:
 - Rejecting empty ask questions.
 - Returning 404 for missing ask videos.
 - Returning timestamped evidence with ask answers.
+- Retrying after failed analysis and completing successfully.
+- Reanalyzing an analyzed video without duplicated transcript, timeline, or evidence records.
+- Cleaning partial frame outputs after frame extraction failure.
+- Reusing valid audio, keyframe, and scene outputs where safe.
+- Rejecting concurrent processing conflicts.
+- Returning safe error responses and failed status messages without raw runtime details.
 - Allowing the local Vite frontend origin through backend CORS.
 - Building and type-checking the frontend application.
 - Rendering frontend upload, analyze, timeline, and ask flows with mocked backend responses.
@@ -1166,6 +1264,8 @@ with a short `.mp4` or `.mov` video through the product web app:
 - At a desktop viewport and a reasonable mobile viewport, confirm core controls remain usable without overlapping text or controls.
 - Confirm unsupported files, provider configuration failures, FFmpeg/media processing failures, failed analysis, and backend connectivity failures show safe actionable errors without secrets, stack traces, or private local paths.
 - Confirm retry or recovery controls are available for failed upload, analysis, timeline loading, status refresh, and ask operations when retrying is possible.
+- Confirm retrying a failed analysis can reach `analyzed` without re-uploading the video.
+- Confirm explicit reanalysis replaces the timeline and evidence rather than appending duplicate stale records.
 
 Manual acceptance requires a configured provider key and FFmpeg installed locally.
 If the workflow fails, use the troubleshooting guidance in
@@ -1203,6 +1303,8 @@ npm audit --omit=dev
 npm audit --audit-level=moderate
 ```
 
+M10 backend lifecycle delivery also requires the backend checks above and focused lifecycle coverage for retry, reanalysis, partial-output cleanup, idempotent reuse, conflict behavior, and safe error/status behavior.
+
 ## 12. Implementation and Release Plan
 
 ### 12.1 Implementation Milestones
@@ -1218,6 +1320,7 @@ npm audit --audit-level=moderate
 | M7: Delivery readiness and verification | README workflow, `.env.example` coverage, manual acceptance checklist, known limitations, troubleshooting, runtime artifact controls, and local checks. |
 | M8: Product web app foundation | React/Vite local product app for upload, status, analysis, timeline, ask, evidence display, safe errors, and frontend verification. |
 | M9: Frontend product hardening | Upload progress, analysis progress, retry/recovery states, actionable safe errors, responsive layout, accessibility basics, and mocked frontend flow tests. |
+| M10: Backend processing lifecycle | Explicit retry/reanalysis transitions, cleanup and reuse rules, controlled runtime error categories, queue-ready job boundary, and lifecycle regression tests. |
 
 ### 12.2 Release Scope
 
@@ -1234,6 +1337,7 @@ Included in the first MVP:
 - Automated tests with mocked AI clients.
 - Frontend type-check, lint, test, and build commands.
 - Frontend product hardening for progress, recovery, safe errors, responsive layout, accessibility basics, and mocked workflow tests.
+- Backend processing lifecycle hardening for safe retry, explicit reanalysis, controlled errors, and durable reusable checkpoints.
 
 Deferred from the first MVP:
 
@@ -1246,7 +1350,7 @@ Deferred from the first MVP:
 - Hosted production deployment.
 - In-browser serving of extracted frame image files.
 
-M8 adds the first product web app while preserving the backend architecture and API scope. M9 hardens that web app for local product use. These milestones do not add new public product endpoints, ranking, embeddings, vector search, background processing, authentication, analytics, tracking, or production deployment architecture.
+M8 adds the first product web app while preserving the backend architecture and API scope. M9 hardens that web app for local product use. M10 hardens the backend lifecycle behind the existing API. These milestones do not add new public product endpoints, ranking, embeddings, vector search, background processing, authentication, analytics, tracking, or production deployment architecture.
 
 ### 12.3 GitHub Release Readiness
 
@@ -1270,10 +1374,11 @@ Before the first GitHub release, the repository should include:
 
 ### 12.4 Known Limitations
 
-The M9 local MVP has the following known limitations:
+The M10 local MVP has the following known limitations:
 
 - No authentication, authorization, user accounts, or multi-tenant data isolation.
 - No background queue. Analysis runs synchronously in the API process.
+- A process crash during synchronous analysis can still leave a video in `processing`; a future worker/job runner should add lease, timeout, and resume controls.
 - No ranking, embeddings, vector search, or deep retrieval mode. Question answering uses stored evidence only.
 - No production storage layer. SQLite and local `data/` folders are intended for local MVP verification.
 - No production deployment hardening such as HTTPS termination, cloud storage, worker scaling, monitoring, or backup policy.
@@ -1288,6 +1393,8 @@ Common local issues and expected responses:
 | Port 8000 already in use | Uvicorn cannot bind to `127.0.0.1:8000`. | Run `uvicorn app.main:app --reload --port 8001` or stop the process using port 8000. |
 | FFmpeg missing | `ffmpeg -version` fails. | Install FFmpeg locally, then rerun analysis. |
 | Provider key missing | Analysis fails when provider-backed transcription or frame analysis starts. | Set the matching provider key in local `.env`, restart Uvicorn, and retry analysis. |
+| Analysis failed after partial processing | Status shows `failed` with a safe message. | Fix the local issue, then retry analysis for the same video ID; valid audio, keyframes, and scenes may be reused. |
+| Video appears stuck in `processing` after interrupted local run | The API process may have stopped during synchronous analysis. | Restart the backend and rerun analysis for the same video ID after confirming no request is still active. |
 | SQLite or local data confusion | Old uploads, frames, audio, or database records affect a manual run. | Stop the server, clear local runtime files under `data/` as needed, keep `.gitkeep` files, then restart. |
 | `.env` changes not taking effect | Server still uses old settings. | Restart Uvicorn after editing `.env`. |
 | Frontend cannot reach backend | Web app shows backend offline or requests fail in the browser. | Start Uvicorn, confirm `VITE_API_BASE_URL`, and confirm `CORS_ALLOWED_ORIGINS` includes the Vite origin. |
@@ -1305,6 +1412,7 @@ This matrix connects requirements to implementation modules and planned verifica
 | Keyframe extraction | FR-11 to FR-12 | `adapters/frame_extractor.py` | Frame interval unit test and temporary output directory test. |
 | Scene detection | FR-13 to FR-14 | `adapters/scene_detector.py` | Scene fallback test and mocked detection test. |
 | Failure handling | FR-15, NFR-8, NFR-18 | `domain/errors.py`, `video_processor.py`, API exception handlers | Corrupted video test, missing config test, safe error response test. |
+| Backend processing lifecycle | FR-52 to FR-62, NFR-26 | `video_processor.py`, `processing_lifecycle.py`, `video_repository.py` | Retry, reanalysis, cleanup, reuse, processing conflict, and safe status tests. |
 | Visual analysis | FR-16 to FR-17, FR-21 | `adapters/frame_analyzer.py` | Mock vision client test and frame selection test. |
 | Timeline generation | FR-18 to FR-20 | `timeline_builder.py`, timeline repository methods, `/videos/{video_id}/timeline` | Timeline ordering test, evidence link test, and timeline API test. |
 | Video question answering | FR-22 to FR-28a | `question_answerer.py`, evidence retrieval methods, `/videos/{video_id}/ask` | Success, missing video, not analyzed, empty question, insufficient evidence, and timestamped evidence tests. |

@@ -60,6 +60,13 @@ class VideoRepository:
         video.timeline_events.clear()
         self.session.flush()
 
+    def clear_analysis_outputs(self, video: VideoModel) -> None:
+        video.transcript_segments.clear()
+        video.timeline_events.clear()
+        for keyframe in self.list_keyframes(video):
+            keyframe.visual_summary = None
+        self.session.flush()
+
     def list_keyframes(self, video: VideoModel) -> list[KeyframeModel]:
         statement = (
             select(KeyframeModel)
