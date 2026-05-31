@@ -14,6 +14,7 @@ from app.adapters.scene_detector import DetectedScene
 from app.adapters.transcriber import TranscriptSegmentData
 from app.api.videos import get_question_answerer, get_video_processor
 from app.config import get_settings
+from app.domain.errors import ProcessingAppError
 from app.main import create_app
 from app.services.question_answerer import (
     INSUFFICIENT_EVIDENCE_ANSWER,
@@ -63,6 +64,18 @@ class FailingFrameExtractor:
         raise RuntimeError("frame extraction should have reused existing metadata")
 
 
+class DirtyFailingFrameExtractor:
+    def extract(
+        self,
+        video_path: Path,
+        output_dir: Path,
+        sample_seconds: int,
+    ) -> list[ExtractedFrame]:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "partial_frame.jpg").write_bytes(b"partial frame")
+        raise RuntimeError("local decoder failed after writing a partial frame")
+
+
 class FakeSceneDetector:
     def detect(self, video_path: Path) -> list[DetectedScene]:
         assert video_path.exists()
@@ -100,6 +113,22 @@ class FakeUntimedTranscriber:
         ]
 
 
+class FakeSecondPassTranscriber:
+    def transcribe(self, audio_path: Path) -> list[TranscriptSegmentData]:
+        assert audio_path.read_bytes() == b"fake wav bytes"
+        return [
+            TranscriptSegmentData(start_time=0.0, end_time=1.0, text="Second pass narration"),
+        ]
+
+
+class ConfigFailingTranscriber:
+    def transcribe(self, audio_path: Path) -> list[TranscriptSegmentData]:
+        raise ProcessingAppError(
+            "Secret provider failure OPENAI_API_KEY=abc123",
+            code="transcription_not_configured",
+        )
+
+
 class FakeFrameAnalyzer:
     def analyze(self, frame_paths: list[Path]) -> list[FrameAnalysisResult]:
         return [
@@ -109,6 +138,27 @@ class FakeFrameAnalyzer:
             )
             for frame_path in frame_paths
         ]
+
+
+class FakeSecondPassFrameAnalyzer:
+    def analyze(self, frame_paths: list[Path]) -> list[FrameAnalysisResult]:
+        return [
+            FrameAnalysisResult(
+                frame_path=frame_path,
+                visual_summary=f"Updated visual summary for {frame_path.name}",
+            )
+            for frame_path in frame_paths
+        ]
+
+
+class FailingFrameAnalyzer:
+    def analyze(self, frame_paths: list[Path]) -> list[FrameAnalysisResult]:
+        raise RuntimeError("secret path /tmp/.env GEMINI_API_KEY=abc123")
+
+
+class FailingTimelineBuilder:
+    def build(self, *, video: object, repository: object) -> object:
+        raise RuntimeError("secret timeline evidence path /tmp/private.sqlite3")
 
 
 class FakeAnswerProvider:
@@ -812,7 +862,7 @@ def test_analyze_video_failure_marks_video_failed_with_safe_message(
     assert response.status_code == 500
     assert response.json() == {
         "error": {
-            "code": "video_analysis_failed",
+            "code": "audio_extraction_failed",
             "message": "Video analysis failed.",
             "details": {},
         }
@@ -825,3 +875,303 @@ def test_analyze_video_failure_marks_video_failed_with_safe_message(
         "status": "failed",
         "error_message": "Video analysis failed.",
     }
+
+
+def test_failed_frame_analysis_can_retry_and_reuse_durable_outputs(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    first_processor = VideoProcessor(
+        audio_extractor=FakeAudioExtractor(),
+        frame_extractor=FakeFrameExtractor(),
+        scene_detector=FakeSceneDetector(),
+        transcriber=FakeTranscriber(),
+        frame_analyzer=FailingFrameAnalyzer(),
+        settings=get_settings(),
+    )
+    client.app.dependency_overrides[get_video_processor] = lambda: first_processor
+
+    upload_response = client.post(
+        "/videos/upload",
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "video/mp4")},
+    )
+    video_id = upload_response.json()["video_id"]
+
+    first_response = client.post(f"/videos/{video_id}/analyze")
+
+    assert first_response.status_code == 500
+    assert first_response.json() == {
+        "error": {
+            "code": "frame_analysis_failed",
+            "message": "Video analysis failed.",
+            "details": {},
+        }
+    }
+    with sqlite3.connect(tmp_path / "test_video_ai.sqlite3") as connection:
+        failed_counts = connection.execute(
+            """
+            select
+                (select count(*) from keyframes where video_id = ?),
+                (select count(*) from scenes where video_id = ?),
+                (select count(*) from transcript_segments where video_id = ?),
+                (select count(*) from timeline_events where video_id = ?),
+                (
+                    select count(*)
+                    from evidence_links
+                    join timeline_events
+                        on timeline_events.id = evidence_links.timeline_event_id
+                    where timeline_events.video_id = ?
+                ),
+                (
+                    select count(*)
+                    from keyframes
+                    where video_id = ? and visual_summary is not null
+                )
+            """,
+            (video_id, video_id, video_id, video_id, video_id, video_id),
+        ).fetchone()
+
+    assert failed_counts == (2, 2, 0, 0, 0, 0)
+
+    retry_processor = VideoProcessor(
+        audio_extractor=FailingAudioExtractor(),
+        frame_extractor=FailingFrameExtractor(),
+        scene_detector=FailingSceneDetector(),
+        transcriber=FakeTranscriber(),
+        frame_analyzer=FakeFrameAnalyzer(),
+        settings=get_settings(),
+    )
+    client.app.dependency_overrides[get_video_processor] = lambda: retry_processor
+
+    retry_response = client.post(f"/videos/{video_id}/analyze")
+
+    assert retry_response.status_code == 200
+    assert retry_response.json() == {
+        "video_id": video_id,
+        "status": "analyzed",
+        "transcript_segments": 2,
+        "keyframes": 2,
+        "scenes": 2,
+        "timeline_events": 2,
+    }
+
+
+def test_reanalysis_replaces_records_without_stale_timeline_or_evidence(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    first_processor = VideoProcessor(
+        audio_extractor=FakeAudioExtractor(),
+        frame_extractor=FakeFrameExtractor(),
+        scene_detector=FakeSceneDetector(),
+        transcriber=FakeTranscriber(),
+        frame_analyzer=FakeFrameAnalyzer(),
+        settings=get_settings(),
+    )
+    client.app.dependency_overrides[get_video_processor] = lambda: first_processor
+
+    upload_response = client.post(
+        "/videos/upload",
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "video/mp4")},
+    )
+    video_id = upload_response.json()["video_id"]
+    first_response = client.post(f"/videos/{video_id}/analyze")
+    assert first_response.status_code == 200
+
+    second_processor = VideoProcessor(
+        audio_extractor=FailingAudioExtractor(),
+        frame_extractor=FailingFrameExtractor(),
+        scene_detector=FailingSceneDetector(),
+        transcriber=FakeSecondPassTranscriber(),
+        frame_analyzer=FakeSecondPassFrameAnalyzer(),
+        settings=get_settings(),
+    )
+    client.app.dependency_overrides[get_video_processor] = lambda: second_processor
+
+    second_response = client.post(f"/videos/{video_id}/analyze")
+
+    assert second_response.status_code == 200
+    assert second_response.json() == {
+        "video_id": video_id,
+        "status": "analyzed",
+        "transcript_segments": 1,
+        "keyframes": 2,
+        "scenes": 2,
+        "timeline_events": 2,
+    }
+    with sqlite3.connect(tmp_path / "test_video_ai.sqlite3") as connection:
+        transcript_rows = connection.execute(
+            "select text from transcript_segments where video_id = ? order by start_time",
+            (video_id,),
+        ).fetchall()
+        keyframe_rows = connection.execute(
+            "select visual_summary from keyframes where video_id = ? order by time",
+            (video_id,),
+        ).fetchall()
+        timeline_rows = connection.execute(
+            "select summary from timeline_events where video_id = ? order by start_time",
+            (video_id,),
+        ).fetchall()
+        evidence_link_count = connection.execute(
+            """
+            select count(*)
+            from evidence_links
+            join timeline_events on timeline_events.id = evidence_links.timeline_event_id
+            where timeline_events.video_id = ?
+            """,
+            (video_id,),
+        ).fetchone()[0]
+
+    assert transcript_rows == [("Second pass narration",)]
+    assert keyframe_rows == [
+        ("Updated visual summary for frame_000001.jpg",),
+        ("Updated visual summary for frame_000002.jpg",),
+    ]
+    assert timeline_rows == [
+        (
+            "Speech: Second pass narration Visual: "
+            "Updated visual summary for frame_000001.jpg",
+        ),
+        ("Visual: Updated visual summary for frame_000002.jpg",),
+    ]
+    assert evidence_link_count == 5
+
+
+def test_frame_extraction_failure_cleans_partial_frame_outputs(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    processor = VideoProcessor(
+        audio_extractor=FakeAudioExtractor(),
+        frame_extractor=DirtyFailingFrameExtractor(),
+        scene_detector=FakeSceneDetector(),
+        transcriber=FakeTranscriber(),
+        frame_analyzer=FakeFrameAnalyzer(),
+        settings=get_settings(),
+    )
+    client.app.dependency_overrides[get_video_processor] = lambda: processor
+
+    upload_response = client.post(
+        "/videos/upload",
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "video/mp4")},
+    )
+    video_id = upload_response.json()["video_id"]
+
+    response = client.post(f"/videos/{video_id}/analyze")
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "error": {
+            "code": "frame_extraction_failed",
+            "message": "Video analysis failed.",
+            "details": {},
+        }
+    }
+    assert (tmp_path / "audio" / video_id / "audio.wav").exists()
+    assert not (tmp_path / "frames" / video_id).exists()
+    with sqlite3.connect(tmp_path / "test_video_ai.sqlite3") as connection:
+        rows = connection.execute(
+            """
+            select
+                (select status from videos where id = ?),
+                (select error_message from videos where id = ?),
+                (select count(*) from keyframes where video_id = ?),
+                (select count(*) from scenes where video_id = ?),
+                (select count(*) from transcript_segments where video_id = ?),
+                (select count(*) from timeline_events where video_id = ?)
+            """,
+            (video_id, video_id, video_id, video_id, video_id, video_id),
+        ).fetchone()
+
+    assert rows == ("failed", "Video analysis failed.", 0, 0, 0, 0)
+
+
+def test_provider_configuration_failure_returns_controlled_safe_status(
+    client: TestClient,
+) -> None:
+    processor = VideoProcessor(
+        audio_extractor=FakeAudioExtractor(),
+        frame_extractor=FakeFrameExtractor(),
+        scene_detector=FakeSceneDetector(),
+        transcriber=ConfigFailingTranscriber(),
+        frame_analyzer=FakeFrameAnalyzer(),
+        settings=get_settings(),
+    )
+    client.app.dependency_overrides[get_video_processor] = lambda: processor
+
+    upload_response = client.post(
+        "/videos/upload",
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "video/mp4")},
+    )
+    video_id = upload_response.json()["video_id"]
+
+    response = client.post(f"/videos/{video_id}/analyze")
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "error": {
+            "code": "transcription_not_configured",
+            "message": "Video analysis failed.",
+            "details": {},
+        }
+    }
+    status_response = client.get(f"/videos/{video_id}/status")
+    assert status_response.status_code == 200
+    assert status_response.json() == {
+        "video_id": video_id,
+        "status": "failed",
+        "error_message": "Video analysis failed.",
+    }
+
+
+def test_timeline_runtime_failure_returns_controlled_safe_error(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    processor = VideoProcessor(
+        audio_extractor=FakeAudioExtractor(),
+        frame_extractor=FakeFrameExtractor(),
+        scene_detector=FakeSceneDetector(),
+        transcriber=FakeTranscriber(),
+        frame_analyzer=FakeFrameAnalyzer(),
+        timeline_builder=FailingTimelineBuilder(),
+        settings=get_settings(),
+    )
+    client.app.dependency_overrides[get_video_processor] = lambda: processor
+
+    upload_response = client.post(
+        "/videos/upload",
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "video/mp4")},
+    )
+    video_id = upload_response.json()["video_id"]
+
+    response = client.post(f"/videos/{video_id}/analyze")
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "error": {
+            "code": "timeline_generation_failed",
+            "message": "Video analysis failed.",
+            "details": {},
+        }
+    }
+    with sqlite3.connect(tmp_path / "test_video_ai.sqlite3") as connection:
+        rows = connection.execute(
+            """
+            select
+                (select status from videos where id = ?),
+                (select error_message from videos where id = ?),
+                (select count(*) from transcript_segments where video_id = ?),
+                (select count(*) from timeline_events where video_id = ?),
+                (
+                    select count(*)
+                    from evidence_links
+                    join timeline_events
+                        on timeline_events.id = evidence_links.timeline_event_id
+                    where timeline_events.video_id = ?
+                )
+            """,
+            (video_id, video_id, video_id, video_id, video_id),
+        ).fetchone()
+
+    assert rows == ("failed", "Video analysis failed.", 0, 0, 0)

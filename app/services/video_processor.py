@@ -19,6 +19,7 @@ from app.config import Settings, get_settings
 from app.domain.errors import ConflictAppError, NotFoundAppError, ProcessingAppError
 from app.domain.status import VideoStatus
 from app.repositories.video_repository import VideoRepository
+from app.services.processing_lifecycle import STAGE_ERROR_CODES, AnalysisJob, ProcessingStage
 from app.services.timeline_builder import TimelineBuilder
 
 SAFE_ANALYSIS_ERROR_MESSAGE = "Video analysis failed."
@@ -67,38 +68,41 @@ class VideoProcessor:
                 code="video_already_processing",
             )
 
-        video_path = Path(video.stored_path)
-        audio_path = self._audio_output_path(video_id)
-        frame_dir = self._frame_output_dir(video_id)
+        job = self._analysis_job(video_id=video.id, video_path=Path(video.stored_path))
 
         try:
-            repository.set_status(video, VideoStatus.PROCESSING, error_message=None)
-            repository.session.commit()
+            self._start_job(job=job, video=video, repository=repository)
 
-            self._ensure_output_dirs(audio_path=audio_path, frame_dir=frame_dir)
-            self._ensure_audio(video_path=video_path, audio_path=audio_path)
+            self._ensure_output_dirs(audio_path=job.audio_path, frame_dir=job.frame_dir)
+            job.enter(ProcessingStage.AUDIO_EXTRACTION)
+            self._ensure_audio(video_path=job.video_path, audio_path=job.audio_path)
 
+            job.enter(ProcessingStage.FRAME_EXTRACTION)
             keyframes = self._load_reusable_keyframes(video=video, repository=repository)
             if not keyframes:
                 keyframes = self._extract_keyframes(
                     video=video,
-                    video_path=video_path,
-                    frame_dir=frame_dir,
+                    video_path=job.video_path,
+                    frame_dir=job.frame_dir,
                     repository=repository,
                 )
+                self._commit_processing_checkpoint(repository)
 
+            job.enter(ProcessingStage.SCENE_DETECTION)
             scenes = self._load_reusable_scenes(video=video, repository=repository)
             if not scenes:
                 scenes = self._detect_scenes_with_fallback(
-                    video_path=video_path,
+                    video_path=job.video_path,
                     keyframes=keyframes,
                 )
                 repository.replace_scenes(
                     video,
                     [(scene.start_time, scene.end_time) for scene in scenes],
                 )
+                self._commit_processing_checkpoint(repository)
 
-            transcript_segments = self._transcribe_audio(audio_path)
+            job.enter(ProcessingStage.TRANSCRIPTION)
+            transcript_segments = self._transcribe_audio(job.audio_path)
             repository.replace_transcript_segments(
                 video,
                 [
@@ -107,6 +111,7 @@ class VideoProcessor:
                 ],
             )
 
+            job.enter(ProcessingStage.FRAME_ANALYSIS)
             frame_summaries = self.frame_analyzer.analyze(
                 [keyframe.path for keyframe in keyframes],
             )
@@ -116,9 +121,13 @@ class VideoProcessor:
                 frame_summaries=frame_summaries,
                 repository=repository,
             )
+
+            job.enter(ProcessingStage.TIMELINE_BUILDING)
             timeline_result = self.timeline_builder.build(video=video, repository=repository)
+
+            job.enter(ProcessingStage.STORAGE)
             repository.set_status(video, VideoStatus.ANALYZED, error_message=None)
-            repository.session.commit()
+            self._commit_processing_checkpoint(repository)
 
             return AnalysisResult(
                 video_id=video.id,
@@ -129,10 +138,47 @@ class VideoProcessor:
                 timeline_events=timeline_result.events,
             )
         except Exception as exc:
-            self._mark_failed(video_id=video_id, repository=repository)
+            self._cleanup_failed_job(job)
+            try:
+                self._mark_failed(video_id=video_id, repository=repository)
+            except Exception as failure_exc:
+                raise ProcessingAppError(
+                    SAFE_ANALYSIS_ERROR_MESSAGE,
+                    code="processing_storage_failed",
+                ) from failure_exc
             raise ProcessingAppError(
                 SAFE_ANALYSIS_ERROR_MESSAGE,
-                code=self._safe_processing_code(exc),
+                code=self._safe_processing_code(exc, stage=job.stage),
+            ) from exc
+
+    def _analysis_job(self, *, video_id: str, video_path: Path) -> AnalysisJob:
+        return AnalysisJob(
+            video_id=video_id,
+            video_path=video_path,
+            audio_path=self._audio_output_path(video_id),
+            frame_dir=self._frame_output_dir(video_id),
+        )
+
+    def _start_job(
+        self,
+        *,
+        job: AnalysisJob,
+        video: object,
+        repository: VideoRepository,
+    ) -> None:
+        job.enter(ProcessingStage.PREPARING)
+        repository.set_status(video, VideoStatus.PROCESSING, error_message=None)
+        repository.clear_analysis_outputs(video)
+        self._commit_processing_checkpoint(repository)
+
+    def _commit_processing_checkpoint(self, repository: VideoRepository) -> None:
+        try:
+            repository.session.commit()
+        except Exception as exc:
+            repository.session.rollback()
+            raise ProcessingAppError(
+                "Processing state could not be saved.",
+                code="processing_storage_failed",
             ) from exc
 
     def _audio_output_path(self, video_id: str) -> Path:
@@ -295,7 +341,13 @@ class VideoProcessor:
         )
         repository.session.commit()
 
-    def _safe_processing_code(self, exc: Exception) -> str:
+    def _cleanup_failed_job(self, job: AnalysisJob) -> None:
+        if job.stage == ProcessingStage.AUDIO_EXTRACTION:
+            job.audio_path.unlink(missing_ok=True)
+        elif job.stage == ProcessingStage.FRAME_EXTRACTION:
+            shutil.rmtree(job.frame_dir, ignore_errors=True)
+
+    def _safe_processing_code(self, exc: Exception, *, stage: ProcessingStage) -> str:
         if isinstance(exc, ProcessingAppError):
             return exc.code
-        return "video_analysis_failed"
+        return STAGE_ERROR_CODES[stage]
