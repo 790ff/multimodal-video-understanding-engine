@@ -24,13 +24,19 @@ export function VideoWorkspace() {
         </div>
       </header>
 
-      <ErrorBanner error={state.error} onDismiss={actions.clearError} />
+      <ErrorBanner
+        error={state.error}
+        actionLabel={state.recoveryActionLabel}
+        onAction={() => void actions.retryLastFailedOperation()}
+        onDismiss={actions.clearError}
+      />
 
       <section className="workspace-grid" aria-label="Video workflow">
         <div className="left-column">
           <UploadPanel
             selectedFile={state.selectedFile}
             uploading={state.busy.uploading}
+            progress={state.uploadProgress}
             onSelectFile={actions.selectFile}
             onUpload={actions.uploadSelectedFile}
           />
@@ -41,6 +47,7 @@ export function VideoWorkspace() {
             canAnalyze={state.canAnalyze}
             refreshingStatus={state.busy.refreshingStatus}
             analyzing={state.busy.analyzing}
+            analysisProgress={state.analysisProgress}
             onAnalyze={actions.analyzeVideo}
             onRefreshStatus={() => void actions.refreshStatus()}
             onLoadVideoId={actions.loadVideoId}
@@ -56,6 +63,7 @@ export function VideoWorkspace() {
           timeline={state.timeline}
           loading={state.busy.loadingTimeline}
           analyzed={analyzed}
+          onReload={() => void actions.loadTimeline()}
         />
 
         <AskPanel

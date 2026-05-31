@@ -6,6 +6,12 @@ export type VideoUploadResponse = {
   status: VideoStatusValue;
 };
 
+export type UploadProgressEvent = {
+  loaded: number;
+  total: number | null;
+  percent: number | null;
+};
+
 export type VideoStatusResponse = {
   video_id: string;
   status: VideoStatusValue;

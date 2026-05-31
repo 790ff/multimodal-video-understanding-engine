@@ -2,6 +2,8 @@ import { ListChecks, Play, RefreshCw, RotateCcw, Search } from "lucide-react";
 import { FormEvent, useState } from "react";
 
 import type { AnalyzeVideoResponse, VideoStatusResponse, VideoUploadResponse } from "../api/types";
+import type { AnalysisProgressState } from "../utils/workflowProgress";
+import { ProgressMeter } from "./ProgressMeter";
 import { StatusBadge } from "./StatusBadge";
 
 type VideoControlPanelProps = {
@@ -11,6 +13,7 @@ type VideoControlPanelProps = {
   canAnalyze: boolean;
   refreshingStatus: boolean;
   analyzing: boolean;
+  analysisProgress: AnalysisProgressState;
   onAnalyze: () => void;
   onRefreshStatus: () => void;
   onLoadVideoId: (videoId: string) => void;
@@ -24,6 +27,7 @@ export function VideoControlPanel({
   canAnalyze,
   refreshingStatus,
   analyzing,
+  analysisProgress,
   onAnalyze,
   onRefreshStatus,
   onLoadVideoId,
@@ -37,7 +41,11 @@ export function VideoControlPanel({
   }
 
   return (
-    <section className="tool-panel control-panel" aria-labelledby="status-title">
+    <section
+      className="tool-panel control-panel"
+      aria-labelledby="status-title"
+      aria-busy={refreshingStatus || analyzing}
+    >
       <div className="panel-heading">
         <div>
           <span className="eyebrow">Processing</span>
@@ -60,6 +68,22 @@ export function VideoControlPanel({
           <dd>{status?.status ?? "No video"}</dd>
         </div>
       </dl>
+
+      <ProgressMeter
+        label={analysisProgress.label}
+        detail={analysisProgress.detail}
+        value={analysisProgress.percent}
+        tone={analysisProgressTone(analysisProgress.phase)}
+      />
+
+      <ol className="progress-steps" aria-label="Workflow progress">
+        {analysisProgress.steps.map((step) => (
+          <li key={step.id} className={`progress-step progress-step--${step.status}`}>
+            <span aria-hidden="true" />
+            {step.label}
+          </li>
+        ))}
+      </ol>
 
       <form className="load-video-form" onSubmit={handleLoadVideo}>
         <label htmlFor="load-video-id">Load video ID</label>
@@ -102,7 +126,7 @@ export function VideoControlPanel({
           disabled={!canAnalyze}
         >
           <Play size={17} aria-hidden="true" />
-          {analyzing ? "Analyzing" : "Analyze"}
+          {analyzing ? "Analyzing" : status?.status === "failed" ? "Retry analysis" : "Analyze"}
         </button>
         <button
           type="button"
@@ -122,9 +146,22 @@ export function VideoControlPanel({
       {status?.status === "failed" ? (
         <p className="inline-warning">
           <ListChecks size={16} aria-hidden="true" />
-          {status.error_message ?? "Analysis failed."}
+          Analysis stopped before completion. Check local configuration, then retry analysis.
         </p>
       ) : null}
     </section>
   );
+}
+
+function analysisProgressTone(phase: AnalysisProgressState["phase"]) {
+  if (phase === "complete") {
+    return "success";
+  }
+  if (phase === "failed") {
+    return "danger";
+  }
+  if (phase === "processing" || phase === "timeline") {
+    return "active";
+  }
+  return "neutral";
 }

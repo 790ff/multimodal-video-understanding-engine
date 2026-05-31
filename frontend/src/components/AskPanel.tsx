@@ -21,7 +21,7 @@ export function AskPanel({ answer, disabled, asking, onAsk }: AskPanelProps) {
   }
 
   return (
-    <section className="tool-panel ask-panel" aria-labelledby="ask-title">
+    <section className="tool-panel ask-panel" aria-labelledby="ask-title" aria-busy={asking}>
       <div className="panel-heading">
         <div>
           <span className="eyebrow">Question</span>
@@ -31,7 +31,11 @@ export function AskPanel({ answer, disabled, asking, onAsk }: AskPanelProps) {
       </div>
 
       <form className="ask-form" onSubmit={handleSubmit}>
+        <label className="field-label" htmlFor="video-question">
+          Question
+        </label>
         <textarea
+          id="video-question"
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
           placeholder="What happened at the start?"
@@ -58,7 +62,7 @@ export function AskPanel({ answer, disabled, asking, onAsk }: AskPanelProps) {
         <EmptyState
           icon={MessageCircleQuestion}
           title="No answer yet"
-          message="Answers use stored timeline, transcript, frame, and scene evidence."
+          message={disabled ? "Analyze a video before asking." : "Ask a question about this video."}
         />
       )}
     </section>
