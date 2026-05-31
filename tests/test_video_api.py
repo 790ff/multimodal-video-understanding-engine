@@ -280,6 +280,66 @@ def test_upload_video_rejects_unsupported_extension(client: TestClient) -> None:
     }
 
 
+def test_upload_video_rejects_path_traversal_filename(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    response = client.post(
+        "/videos/upload",
+        files={"file": ("../escape.mp4", b"fake sample mp4 bytes", "video/mp4")},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": {
+            "code": "invalid_filename",
+            "message": "Uploaded filename is invalid.",
+            "details": {},
+        }
+    }
+    assert not (tmp_path / "escape.mp4").exists()
+    assert list((tmp_path / "uploads").iterdir()) == []
+
+
+def test_upload_video_rejects_mismatched_content_type(client: TestClient) -> None:
+    response = client.post(
+        "/videos/upload",
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "text/plain")},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "unsupported_media_content_type"
+
+
+def test_upload_size_limit_does_not_leave_partial_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'test_video_ai.sqlite3'}")
+    monkeypatch.setenv("UPLOAD_DIR", str(tmp_path / "uploads"))
+    monkeypatch.setenv("AUDIO_DIR", str(tmp_path / "audio"))
+    monkeypatch.setenv("FRAME_DIR", str(tmp_path / "frames"))
+    monkeypatch.setenv("MAX_UPLOAD_MB", "1")
+    get_settings.cache_clear()
+
+    with TestClient(create_app()) as size_limited_client:
+        response = size_limited_client.post(
+            "/videos/upload",
+            files={"file": ("sample.mp4", b"x" * (1024 * 1024 + 1), "video/mp4")},
+        )
+
+    get_settings.cache_clear()
+    assert response.status_code == 413
+    assert response.json() == {
+        "error": {
+            "code": "upload_too_large",
+            "message": "Uploaded file exceeds the configured size limit.",
+            "details": {"max_upload_mb": 1},
+        }
+    }
+    assert list((tmp_path / "uploads").iterdir()) == []
+
+
 def test_get_video_status_returns_current_status(client: TestClient) -> None:
     upload_response = client.post(
         "/videos/upload",
@@ -479,6 +539,7 @@ def test_get_video_timeline_returns_ordered_events_with_evidence(
     response = client.get(f"/videos/{video_id}/timeline")
 
     assert response.status_code == 200
+    assert str(tmp_path) not in response.text
     assert response.json() == {
         "video_id": video_id,
         "events": [
@@ -496,7 +557,7 @@ def test_get_video_timeline_returns_ordered_events_with_evidence(
                     {
                         "type": "frame",
                         "time": 0.0,
-                        "path": str(tmp_path / "frames" / video_id / "frame_000001.jpg"),
+                        "path": f"frames/{video_id}/frame_000001.jpg",
                     },
                 ],
             },
@@ -510,7 +571,7 @@ def test_get_video_timeline_returns_ordered_events_with_evidence(
                     {
                         "type": "frame",
                         "time": 3.0,
-                        "path": str(tmp_path / "frames" / video_id / "frame_000002.jpg"),
+                        "path": f"frames/{video_id}/frame_000002.jpg",
                     },
                 ],
             },
@@ -647,6 +708,7 @@ def test_ask_video_returns_timestamped_evidence_with_answer(
     )
 
     assert response.status_code == 200
+    assert str(tmp_path) not in response.text
     body = response.json()
     assert body["answer"] == "Stored timeline answer."
     assert {"type": "timeline_event", "start_time": 0.0, "end_time": 2.5} in body[
@@ -656,7 +718,7 @@ def test_ask_video_returns_timestamped_evidence_with_answer(
     assert {
         "type": "frame",
         "time": 0.0,
-        "path": str(tmp_path / "frames" / video_id / "frame_000001.jpg"),
+        "path": f"frames/{video_id}/frame_000001.jpg",
     } in body["evidence"]
 
 
@@ -860,6 +922,8 @@ def test_analyze_video_failure_marks_video_failed_with_safe_message(
     response = client.post(f"/videos/{video_id}/analyze")
 
     assert response.status_code == 500
+    assert "OPENAI_API_KEY" not in response.text
+    assert "/tmp/.env" not in response.text
     assert response.json() == {
         "error": {
             "code": "audio_extraction_failed",

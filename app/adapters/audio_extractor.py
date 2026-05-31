@@ -3,7 +3,9 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
+from app.config import Settings, get_settings
 from app.domain.errors import ProcessingAppError
 
 
@@ -13,6 +15,9 @@ class AudioExtractionResult:
 
 
 class AudioExtractor:
+    def __init__(self, settings: Optional[Settings] = None) -> None:
+        self.settings = settings or get_settings()
+
     def extract(self, video_path: Path, output_path: Path) -> AudioExtractionResult:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.unlink(missing_ok=True)
@@ -35,7 +40,19 @@ class AudioExtractor:
         ]
 
         try:
-            subprocess.run(command, check=True, capture_output=True, text=True)
+            subprocess.run(
+                command,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=self.settings.ffmpeg_timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as exc:
+            output_path.unlink(missing_ok=True)
+            raise ProcessingAppError(
+                "Audio extraction timed out.",
+                code="audio_extraction_timeout",
+            ) from exc
         except (FileNotFoundError, subprocess.CalledProcessError) as exc:
             output_path.unlink(missing_ok=True)
             raise ProcessingAppError(
