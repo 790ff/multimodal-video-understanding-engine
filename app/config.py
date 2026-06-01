@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     frame_dir: Path = Field(default=Path("data/frames"), alias="FRAME_DIR")
 
     frame_sample_seconds: int = Field(default=2, alias="FRAME_SAMPLE_SECONDS")
+    ffmpeg_timeout_seconds: int = Field(default=120, alias="FFMPEG_TIMEOUT_SECONDS")
     max_upload_mb: int = Field(default=250, alias="MAX_UPLOAD_MB")
     allowed_video_extensions: str = Field(default="mp4,mov", alias="ALLOWED_VIDEO_EXTENSIONS")
     transcription_model: str = Field(default="whisper-1", alias="TRANSCRIPTION_MODEL")
@@ -78,9 +79,9 @@ class Settings(BaseSettings):
     @property
     def allowed_cors_origins(self) -> list[str]:
         return [
-            origin.strip()
+            origin.strip().rstrip("/")
             for origin in self.cors_allowed_origins.split(",")
-            if origin.strip()
+            if origin.strip() and origin.strip() != "*"
         ]
 
     def _provider_list(self, providers: Optional[str]) -> list[str]:

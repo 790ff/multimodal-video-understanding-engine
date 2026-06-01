@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Protocol
 
+from app.config import Settings, get_settings
 from app.db.models import (
     EvidenceLinkModel,
     KeyframeModel,
@@ -11,9 +13,10 @@ from app.db.models import (
     TranscriptSegmentModel,
     VideoModel,
 )
-from app.domain.errors import ConflictAppError, NotFoundAppError, ValidationAppError
+from app.domain.errors import AppError, ConflictAppError, NotFoundAppError, ValidationAppError
 from app.domain.status import VideoStatus
 from app.repositories.video_repository import VideoRepository
+from app.services.storage_paths import public_storage_reference
 
 INSUFFICIENT_EVIDENCE_ANSWER = (
     "I do not have enough stored evidence to answer that question."
@@ -91,12 +94,14 @@ class EvidenceRetriever:
         max_keyframes: int = 12,
         max_evidence_items: int = 40,
         max_context_chars: int = 6000,
+        settings: Settings | None = None,
     ) -> None:
         self.max_timeline_events = max_timeline_events
         self.max_transcript_segments = max_transcript_segments
         self.max_keyframes = max_keyframes
         self.max_evidence_items = max_evidence_items
         self.max_context_chars = max_context_chars
+        self.settings = settings or get_settings()
 
     def retrieve(
         self,
@@ -240,7 +245,7 @@ class EvidenceRetriever:
                 evidence_type="frame",
                 source_id=keyframe.id,
                 time=keyframe.time,
-                path=keyframe.path,
+                path=self._safe_frame_reference(keyframe.path),
                 content=keyframe.visual_summary,
             ),
         )
@@ -338,6 +343,16 @@ class EvidenceRetriever:
         if len(text) <= limit:
             return text
         return f"{text[: limit - 3].rstrip()}..."
+
+    def _safe_frame_reference(self, path: str) -> str | None:
+        try:
+            return public_storage_reference(
+                Path(path),
+                root=self.settings.frame_dir,
+                public_root="frames",
+            )
+        except AppError:
+            return None
 
 
 class QuestionAnswerer:

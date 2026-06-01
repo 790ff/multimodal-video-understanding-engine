@@ -4,11 +4,11 @@ for
 
 # Multimodal Video Understanding Engine
 
-Version 0.8 Draft
+Version 0.9 Draft
 
 Prepared by Thamer
 
-Date: 2026-05-31
+Date: 2026-06-01
 
 ## Revision History
 
@@ -22,6 +22,7 @@ Date: 2026-05-31
 | Thamer | 2026-05-31 | Added M8 product web app foundation, frontend structure, local CORS configuration, browser workflow, frontend checks, and updated release scope | 0.6 |
 | Thamer | 2026-05-31 | Added M9 frontend product hardening, progress and recovery states, safe error categories, accessibility basics, responsive verification, and mocked frontend flow tests | 0.7 |
 | Thamer | 2026-05-31 | Added M10 backend processing lifecycle, retry and reanalysis rules, partial-output cleanup and reuse rules, controlled runtime error categories, and lifecycle regression tests | 0.8 |
+| Thamer | 2026-06-01 | Added M11 security and privacy baseline, upload validation hardening, controlled storage path guards, sanitized API errors, environment-driven CORS rules, FFmpeg timeout handling, exposure rules, and focused security tests | 0.9 |
 
 ## Table of Contents
 
@@ -48,6 +49,8 @@ For M8, this document also covers the first product web app foundation. M8 intro
 For M9, this document also covers frontend product hardening. M9 improves upload progress, analysis progress, retry and recovery states, actionable safe errors, responsive layout behavior, accessibility basics, and frontend test coverage with mocked backend responses. M9 does not introduce user accounts, analytics, tracking, a visual redesign, new public backend endpoints, or a backend processing architecture rewrite.
 
 For M10, this document also covers backend reliability and the processing lifecycle. M10 makes status transitions, retry, reanalysis, partial-output cleanup, durable output reuse, controlled runtime error categories, and the queue-ready job boundary explicit. M10 does not add a distributed worker system, frontend redesign, retrieval ranking changes, accounts, roles, analytics, tracking, or new public product endpoints.
+
+For M11, this document also covers the security and privacy baseline for the local MVP. M11 hardens upload validation, controlled runtime storage paths, CORS configuration, API error sanitization, FFmpeg timeout handling, and media/data exposure rules. M11 documents that the local MVP remains without authentication, while any hosted or public media exposure stage must add authentication and authorization first. M11 does not add enterprise auth, roles, external security services, production hosting changes, analytics, tracking, retrieval ranking changes, frontend redesign, or public media-serving endpoints.
 
 ### 1.2 Document Conventions
 
@@ -134,6 +137,7 @@ The product must provide the following major functions:
 - Support reasonable desktop and mobile layouts with basic accessibility affordances for the core workflow.
 - Support safe backend retry and reanalysis without duplicated or stale timeline and evidence records.
 - Preserve reusable durable processing outputs where safe, including extracted audio, keyframe files, and scene records.
+- Enforce a local security and privacy baseline for upload validation, runtime storage paths, safe API errors, CORS allowlists, media exposure, and FFmpeg runtime failures.
 
 ### 2.3 User Classes and Characteristics
 
@@ -458,6 +462,8 @@ The backend shall treat analysis as a job-like workflow even while it still runs
 - NFR-7: The system shall isolate uploaded media files in project-controlled directories.
 - NFR-8: The system shall handle corrupted or unreadable video files without crashing the API process.
 - NFR-9: The system shall not execute uploaded files as programs or scripts.
+- NFR-27: The system shall reject unsafe uploaded filenames, including empty names, path separators, path traversal attempts, control characters, and filenames that exceed a safe local filename length.
+- NFR-28: Runtime upload, audio, and frame paths shall be resolved through controlled storage path guards so generated or stored paths cannot escape the configured runtime directories.
 
 ### 5.3 Security Requirements
 
@@ -466,6 +472,10 @@ The backend shall treat analysis as a job-like workflow even while it still runs
 - NFR-12: The system shall avoid logging sensitive API keys or full external service credentials.
 - NFR-13: A maximum upload size shall be defined before deployment. The local MVP default is 250 MB.
 - NFR-14: Production deployment shall use HTTPS.
+- NFR-29: API error responses shall be sanitized through a central helper so secrets, provider keys, stack traces, `.env` paths, and sensitive local paths are not returned to the UI.
+- NFR-30: Backend CORS shall be environment-driven through a finite allowlist and shall not use a wildcard origin by default.
+- NFR-31: FFmpeg subprocess execution shall use a configured timeout and return a controlled safe error on failure or timeout.
+- NFR-32: Runtime media folders shall not be mounted as public static routes in the MVP. Uploads and audio are never returned directly, and frame evidence shall use safe relative references rather than private local paths.
 
 ### 5.4 Software Quality Attributes
 
@@ -481,6 +491,7 @@ The backend shall treat analysis as a job-like workflow even while it still runs
 - NFR-24: The frontend shall provide accessibility basics for product operation, including visible focus states, semantic alerts, progress indicators, labeled form controls, and busy-state hints.
 - NFR-25: Frontend tests shall cover the upload, analyze, timeline, and ask workflows plus key state transitions using mocked backend responses.
 - NFR-26: Backend processing lifecycle tests shall cover retry after failed analysis, explicit reanalysis, partial-output cleanup, idempotent reuse, processing conflicts, and safe error/status behavior.
+- NFR-33: Security baseline tests shall cover unsafe filenames, path traversal attempts, upload size cleanup, sanitized errors, allowed and disallowed CORS origins, and the absence of public static routes for media folders.
 
 ### 5.5 Business Rules
 
@@ -489,6 +500,7 @@ The backend shall treat analysis as a job-like workflow even while it still runs
 - BR-3: Answers should cite timestamps or frame references whenever evidence exists.
 - BR-4: The system should not reprocess a video from scratch for every question.
 - BR-5: Authentication and user accounts are out of scope for the first MVP unless required by product delivery criteria.
+- BR-6: The local MVP may run without authentication, but any hosted deployment or public/media exposure stage must add authentication and authorization before exposing user media, transcript, timeline, or evidence data.
 
 ## 6. Other Requirements
 
@@ -503,6 +515,7 @@ The backend shall treat analysis as a job-like workflow even while it still runs
 - OR-9: The project shall include frontend check, test, and build commands for the M8 and M9 web app.
 - OR-10: The project shall document local frontend setup and API base URL configuration.
 - OR-11: The project shall document backend lifecycle rules before M10 delivery is considered complete.
+- OR-12: The project shall document security/privacy assumptions and verification coverage before M11 delivery is considered complete.
 
 ## Part II. Software Architecture
 
@@ -628,13 +641,13 @@ Status transition rules:
 
 Safe processing error categories:
 
-- `audio_extraction_failed` for FFmpeg or audio extraction failures.
+- `audio_extraction_failed` and `audio_extraction_timeout` for FFmpeg or audio extraction failures.
 - `frame_extraction_failed`, `frame_extraction_unavailable`, or `frame_write_failed` for frame extraction failures.
 - `scene_detection_failed` or `scene_detection_unavailable` when scene detection cannot run; the processor should use fallback windows when keyframes are available.
 - `transcription_not_configured`, `transcription_dependency_missing`, `transcription_failed`, or `transcription_invalid_response` for transcription/provider failures.
 - `frame_analysis_not_configured`, `frame_analysis_dependency_missing`, `frame_analysis_failed`, `frame_analysis_empty`, or `frame_analysis_incomplete` for frame analysis/provider failures.
 - `timeline_no_evidence`, `timeline_generation_failed`, or `timeline_evidence_missing` for timeline and evidence failures.
-- `processing_storage_failed`, `video_storage_failed`, or `metadata_storage_failed` for storage/runtime failures.
+- `processing_storage_failed`, `video_storage_failed`, `metadata_storage_failed`, `unsafe_upload_path`, `unsafe_audio_path`, or `unsafe_frame_path` for storage/runtime path failures.
 
 ### 7.9 Testability
 
@@ -648,6 +661,7 @@ Testing rules:
 - Integration test endpoints with mocked provider calls.
 - Use temporary directories and a temporary SQLite database.
 - Test unsupported file type, missing video ID, corrupted video, ask-before-analysis, empty ask questions, insufficient ask evidence, successful timeline retrieval, and successful question answering.
+- Test unsafe upload filenames, path traversal attempts, upload size cleanup, sanitized error responses, CORS allowlist behavior, and absence of public media static routes.
 
 ### 7.10 Architecture Decisions
 
@@ -665,6 +679,10 @@ Testing rules:
 | Explicit status model | Supports retries and future background workers | Requires status endpoint and consistent transitions |
 | React/Vite local web app | Provides the first usable product surface without changing backend architecture | Requires Node.js tooling and frontend verification commands |
 | Configurable local CORS allowlist | Allows the local web app to call the API directly | Requires documented frontend origins and environment configuration |
+| Controlled storage path guards | Prevents upload, audio, and frame paths from escaping configured runtime directories | Requires path helper coverage and careful use in storage and processing services |
+| Centralized API error sanitizer | Keeps API/UI responses free of secrets, stack traces, `.env` paths, and private local paths | Requires controlled errors to pass through one response helper |
+| No public media static routes | Keeps uploads, audio, and extracted frames private in the local MVP | Evidence can reference frames by safe relative identifiers, but image serving is deferred |
+| Auth deferred for local MVP only | Keeps M11 scoped to baseline hardening without accounts or roles | Hosted or public media exposure must add authentication and authorization first |
 
 ## Part III. Software Design
 
@@ -825,6 +843,8 @@ The implementation should use controlled application exceptions instead of leaki
 
 Internal logs may contain diagnostic details, but API responses must not expose API keys, local secrets, full stack traces, or sensitive file paths.
 
+M11 centralizes API error response sanitization. Controlled application errors keep stable codes and safe messages, while the sanitizer redacts or drops secrets, provider keys, `.env` paths, stack traces, and private local paths from messages and details before a response is returned.
+
 For analysis failures, the API should return the safe message `Video analysis failed.` while preserving a stable error code that the frontend can map. The video status endpoint should report `failed` with the same safe failure message, not the raw provider or local exception text.
 
 ### 8.9 Configuration Design
@@ -849,6 +869,7 @@ Configuration should be loaded from environment variables through one central se
 | `AUDIO_DIR` | Extracted audio directory. | `data/audio` |
 | `FRAME_DIR` | Extracted frame directory. | `data/frames` |
 | `FRAME_SAMPLE_SECONDS` | Frame sampling interval. | `2` |
+| `FFMPEG_TIMEOUT_SECONDS` | Timeout for FFmpeg audio extraction subprocesses. | `120` |
 | `MAX_UPLOAD_MB` | Maximum upload size for local MVP uploads. | `250` |
 | `ALLOWED_VIDEO_EXTENSIONS` | Comma-separated list of accepted video extensions. | `mp4,mov` |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated local frontend origins allowed to call the API. | `http://127.0.0.1:5173,http://localhost:5173` |
@@ -857,6 +878,37 @@ Configuration should be loaded from environment variables through one central se
 The backend `.env.example` file shall list every backend runtime setting without real secrets.
 The frontend `.env.example` file shall list frontend-only public local settings.
 Local `.env` and `frontend/.env.local` files are developer-specific and must not be committed.
+
+`CORS_ALLOWED_ORIGINS` is a finite allowlist. Wildcard CORS is not the default policy for the MVP, and local browser origins must be listed explicitly.
+
+### 8.10 Security and Privacy Baseline
+
+M11 defines the local MVP security and privacy baseline without adding accounts, roles, or production hosting changes.
+
+Upload validation rules:
+
+- Accept only configured video extensions, with `mp4` and `mov` as the MVP defaults.
+- Treat content type as supporting metadata, not as the only trust boundary. Known mismatches are rejected before bytes are stored.
+- Reject unsafe filenames, path traversal attempts, path separators, control characters, leading or trailing whitespace, and filenames above the safe local length.
+- Enforce `MAX_UPLOAD_MB` while streaming upload bytes and remove temporary or partial files if the limit is exceeded.
+
+Path handling rules:
+
+- Uploaded videos are stored under the configured upload root by backend-generated IDs, not by user filenames.
+- Audio and frame outputs are generated under configured runtime roots by backend video IDs.
+- Upload, audio, and frame paths must resolve under their configured roots before writing, reusing, or returning references.
+
+Media and data exposure rules:
+
+- Upload files and extracted audio are local runtime artifacts and are not exposed through public static routes.
+- Extracted frames are local runtime artifacts. API evidence may include a safe relative frame reference such as `frames/{video_id}/frame_000001.jpg`, but not a private absolute local path.
+- Transcript text, timeline summaries, answers, and evidence timestamps are exposed only through the existing controlled API endpoints.
+- Evidence responses must not include upload paths, audio paths, provider credentials, `.env` locations, stack traces, or private local filesystem paths.
+
+Authentication decision:
+
+- The local MVP runs without authentication so product and pipeline behavior can be verified locally.
+- Any hosted deployment, multi-user mode, or public/media-serving stage must add authentication and authorization before exposing uploads, audio, frames, transcripts, timelines, answers, or evidence outside the local environment.
 
 ## 9. Data Design
 
@@ -1122,7 +1174,7 @@ M6 behavior:
 
 | Integration | Contract |
 |---|---|
-| FFmpeg | Called through a subprocess wrapper; failures become controlled processing errors. |
+| FFmpeg | Called through a subprocess wrapper with a configured timeout; failures and timeouts become controlled processing errors. |
 | OpenCV | Used by the frame extractor; frame paths and timestamps are returned as structured records. |
 | PySceneDetect | Used by the scene detector; scene boundaries are optional but stored when available. |
 | Transcription provider | Returns transcript text and timestamp segments when available. |
@@ -1146,16 +1198,16 @@ All API errors should use one consistent response shape.
 }
 ```
 
-The `code` field should be stable enough for the frontend to handle. The `message` field should be safe for users. The `details` object should never include API keys, stack traces, or private local paths.
+The `code` field should be stable enough for the frontend to handle. The `message` field should be safe for users. The `details` object should never include API keys, stack traces, `.env` paths, provider credentials, or private local paths. If raw exception text contains sensitive data, the central sanitizer must replace it with a generic safe message or redacted detail value before returning the response.
 
 ### 10.8 Pipeline Stage Contracts
 
 | Stage | Input | Output | Failure Behavior |
 |---|---|---|---|
-| Validate upload | Uploaded file metadata and bytes | Safe filename, extension decision, size decision | Reject request with validation error. |
+| Validate upload | Uploaded file metadata and bytes | Safe filename, extension decision, content-type decision, size decision | Reject request with validation error and avoid writing outside runtime storage. |
 | Store video | Validated upload | Video record and local path | Return storage error and do not create partial analysis records. |
 | Start analysis job | Video record in `uploaded`, `failed`, or `analyzed` | `processing` status, cleared safe error, cleared volatile outputs | Return conflict when the video is already `processing`. |
-| Extract or reuse audio | Stored video path | Nonempty audio path | Reuse existing audio when nonempty; mark video `failed` with `audio_extraction_failed` if FFmpeg/audio extraction fails. |
+| Extract or reuse audio | Stored video path | Nonempty audio path | Reuse existing audio when nonempty; mark video `failed` with `audio_extraction_failed` or `audio_extraction_timeout` if FFmpeg/audio extraction fails or times out. |
 | Extract or reuse keyframes | Video path and sample interval | Durable keyframe paths and timestamps | Reuse only when every referenced file exists and is nonempty; remove partial frame output directories when extraction fails before checkpoint. |
 | Detect or reuse scenes | Video path and keyframes | Scene records or fallback windows | Reuse stored scenes when safe; continue with keyframe-based fallback windows if scene detection fails safely. |
 | Transcribe audio | Audio path | Transcript segments | Rebuild transcript for each successful run; mark video `failed` if transcription is required and unavailable. |
@@ -1167,7 +1219,9 @@ The `code` field should be stable enough for the frontend to handle. The `messag
 
 - `video_id` should be a UUID string generated by the backend.
 - Uploaded filenames should never be trusted as storage paths.
+- Uploaded filenames with traversal, path separators, control characters, leading or trailing whitespace, or unsafe length should be rejected.
 - MVP file types are `mp4` and `mov`.
+- Content type should be checked against the extension allowlist and rejected when it is clearly incompatible.
 - Maximum upload size defaults to 250 MB for the local MVP and can be adjusted through `MAX_UPLOAD_MB`.
 - The first MVP should target short videos up to 2 minutes for predictable cost and processing time.
 
@@ -1184,13 +1238,13 @@ Frontend integration rules:
 - The frontend shall call `GET /videos/{video_id}/timeline` after analysis completes.
 - The frontend shall call `POST /videos/{video_id}/ask` only after the video is analyzed.
 - The frontend shall use `VITE_API_BASE_URL` for the backend base URL.
-- The backend shall use `CORS_ALLOWED_ORIGINS` to allow local Vite origins.
+- The backend shall use `CORS_ALLOWED_ORIGINS` to allow local Vite origins and shall not default to wildcard CORS.
 - The frontend shall translate known backend error codes into safe product messages.
 - The frontend shall not expose backend stack traces, provider keys, or private local paths.
 - The frontend shall keep retry and recovery state inside the workflow state layer rather than duplicating backend processing logic.
 - The frontend shall keep API client, components, views, hooks/state, utilities, and styles in separate frontend source areas.
 
-M8, M9, and M10 intentionally add no authentication, background queue, vector search, embeddings, ranking, analytics, tracking, or public media-serving endpoint.
+M8, M9, M10, and M11 intentionally add no authentication, background queue, vector search, embeddings, ranking, analytics, tracking, or public media-serving endpoint. M11 documents that hosted or public media exposure requires authentication and authorization before release.
 
 ## Part IV. Verification, Release, and Supporting Models
 
@@ -1206,6 +1260,9 @@ Unit tests should cover:
 
 - File extension validation.
 - Safe filename and path generation.
+- Content-type validation for supported upload extensions.
+- Controlled runtime storage path guards.
+- FFmpeg timeout handling.
 - Frame interval calculation.
 - Scene fallback behavior.
 - Timeline event ordering.
@@ -1214,6 +1271,7 @@ Unit tests should cover:
 - Insufficient-evidence answer generation.
 - Error handling for missing video IDs and invalid states.
 - Analysis lifecycle stage behavior, reusable output checkpoints, and safe stage-level error categories.
+- Safe API error sanitization for secrets, stack traces, `.env` paths, and private local paths.
 - Frontend user-facing error mapping.
 - Frontend time and evidence formatting helpers.
 - Frontend progress, retry, and recovery state transitions where they are handled in local workflow state.
@@ -1238,6 +1296,11 @@ Integration tests should cover:
 - Rejecting concurrent processing conflicts.
 - Returning safe error responses and failed status messages without raw runtime details.
 - Allowing the local Vite frontend origin through backend CORS.
+- Rejecting disallowed browser origins through backend CORS.
+- Rejecting path traversal upload filenames without writing outside the upload directory.
+- Enforcing upload size limits without leaving partial upload files.
+- Confirming runtime media folders are not public static routes.
+- Returning safe relative frame evidence references instead of private local frame paths.
 - Building and type-checking the frontend application.
 - Rendering frontend upload, analyze, timeline, and ask flows with mocked backend responses.
 - Rendering frontend recovery states for unsupported files, provider configuration failures, FFmpeg/media processing failures, failed analysis, and server connectivity failures.
@@ -1263,6 +1326,8 @@ with a short `.mp4` or `.mov` video through the product web app:
 - Repeat the ask request and confirm the video remains analyzed without requiring upload or preprocessing to run again.
 - At a desktop viewport and a reasonable mobile viewport, confirm core controls remain usable without overlapping text or controls.
 - Confirm unsupported files, provider configuration failures, FFmpeg/media processing failures, failed analysis, and backend connectivity failures show safe actionable errors without secrets, stack traces, or private local paths.
+- Confirm local media folders are not exposed as browser-accessible static routes.
+- Confirm frame evidence displays safe relative references rather than private local filesystem paths.
 - Confirm retry or recovery controls are available for failed upload, analysis, timeline loading, status refresh, and ask operations when retrying is possible.
 - Confirm retrying a failed analysis can reach `analyzed` without re-uploading the video.
 - Confirm explicit reanalysis replaces the timeline and evidence rather than appending duplicate stale records.
@@ -1305,6 +1370,8 @@ npm audit --audit-level=moderate
 
 M10 backend lifecycle delivery also requires the backend checks above and focused lifecycle coverage for retry, reanalysis, partial-output cleanup, idempotent reuse, conflict behavior, and safe error/status behavior.
 
+M11 security and privacy baseline delivery also requires the backend checks above and focused coverage for unsupported and unsafe upload filenames, path traversal rejection, upload size cleanup, sanitized fake-secret errors, allowed and disallowed CORS origins, FFmpeg timeout handling, safe frame evidence references, and absence of public static media routes.
+
 ## 12. Implementation and Release Plan
 
 ### 12.1 Implementation Milestones
@@ -1321,6 +1388,7 @@ M10 backend lifecycle delivery also requires the backend checks above and focuse
 | M8: Product web app foundation | React/Vite local product app for upload, status, analysis, timeline, ask, evidence display, safe errors, and frontend verification. |
 | M9: Frontend product hardening | Upload progress, analysis progress, retry/recovery states, actionable safe errors, responsive layout, accessibility basics, and mocked frontend flow tests. |
 | M10: Backend processing lifecycle | Explicit retry/reanalysis transitions, cleanup and reuse rules, controlled runtime error categories, queue-ready job boundary, and lifecycle regression tests. |
+| M11: Security and privacy baseline | Upload validation hardening, controlled storage path guards, sanitized API errors, environment-driven CORS allowlist, FFmpeg timeout handling, media exposure rules, authentication decision documentation, and focused security regression tests. |
 
 ### 12.2 Release Scope
 
@@ -1338,6 +1406,7 @@ Included in the first MVP:
 - Frontend type-check, lint, test, and build commands.
 - Frontend product hardening for progress, recovery, safe errors, responsive layout, accessibility basics, and mocked workflow tests.
 - Backend processing lifecycle hardening for safe retry, explicit reanalysis, controlled errors, and durable reusable checkpoints.
+- Backend security and privacy baseline hardening for upload validation, safe runtime paths, safe API errors, CORS allowlist behavior, FFmpeg timeout handling, and private media exposure rules.
 
 Deferred from the first MVP:
 
@@ -1350,7 +1419,7 @@ Deferred from the first MVP:
 - Hosted production deployment.
 - In-browser serving of extracted frame image files.
 
-M8 adds the first product web app while preserving the backend architecture and API scope. M9 hardens that web app for local product use. M10 hardens the backend lifecycle behind the existing API. These milestones do not add new public product endpoints, ranking, embeddings, vector search, background processing, authentication, analytics, tracking, or production deployment architecture.
+M8 adds the first product web app while preserving the backend architecture and API scope. M9 hardens that web app for local product use. M10 hardens the backend lifecycle behind the existing API. M11 hardens the security and privacy baseline without adding public media serving or accounts. These milestones do not add new public product endpoints, ranking, embeddings, vector search, background processing, authentication, analytics, tracking, or production deployment architecture.
 
 ### 12.3 GitHub Release Readiness
 
@@ -1374,9 +1443,10 @@ Before the first GitHub release, the repository should include:
 
 ### 12.4 Known Limitations
 
-The M10 local MVP has the following known limitations:
+The M11 local MVP has the following known limitations:
 
 - No authentication, authorization, user accounts, or multi-tenant data isolation.
+- Hosted deployment or public media exposure is blocked until authentication and authorization are added.
 - No background queue. Analysis runs synchronously in the API process.
 - A process crash during synchronous analysis can still leave a video in `processing`; a future worker/job runner should add lease, timeout, and resume controls.
 - No ranking, embeddings, vector search, or deep retrieval mode. Question answering uses stored evidence only.
@@ -1407,7 +1477,7 @@ This matrix connects requirements to implementation modules and planned verifica
 | Requirement Area | Main Requirements | Implementation Modules | Verification |
 |---|---|---|---|
 | Video upload | FR-1 to FR-6 | `api/videos.py`, `video_storage.py`, `video_repository.py` | Upload tests, unsupported file test, safe path test. |
-| Audio extraction | FR-7 to FR-8 | `video_processor.py`, `adapters/audio_extractor.py` | Unit test with fake FFmpeg result, integration test with small video. |
+| Audio extraction | FR-7 to FR-8, NFR-31 | `video_processor.py`, `adapters/audio_extractor.py` | Unit test with fake FFmpeg timeout/failure result, integration test with small video. |
 | Transcription | FR-9 to FR-10 | `adapters/transcriber.py`, repository transcript methods | Mocked transcription integration test. |
 | Keyframe extraction | FR-11 to FR-12 | `adapters/frame_extractor.py` | Frame interval unit test and temporary output directory test. |
 | Scene detection | FR-13 to FR-14 | `adapters/scene_detector.py` | Scene fallback test and mocked detection test. |
@@ -1418,7 +1488,7 @@ This matrix connects requirements to implementation modules and planned verifica
 | Video question answering | FR-22 to FR-28a | `question_answerer.py`, evidence retrieval methods, `/videos/{video_id}/ask` | Success, missing video, not analyzed, empty question, insufficient evidence, and timestamped evidence tests. |
 | Storage and retrieval | FR-29 to FR-35, NFR-19 | `db/models.py`, `video_repository.py` | Repository tests with temporary SQLite database. |
 | Product web app | FR-36 to FR-51, NFR-20 to NFR-25 | `frontend/src`, `frontend/package.json`, `app/main.py`, `config.py` | Frontend type-check, lint, tests, build, mocked workflow tests, browser workflow verification, responsive screenshot verification, and CORS preflight test. |
-| Security and configuration | NFR-6 to NFR-14, NFR-21 to NFR-22 | `config.py`, upload validation, API error handling, frontend error mapping | Env var test, rejected extension test, no-secret-response check, CORS test, frontend error mapping test, and frontend safe error tests. |
+| Security and configuration | NFR-6 to NFR-14, NFR-21 to NFR-22, NFR-27 to NFR-33, BR-6 | `config.py`, `api/error_handling.py`, `storage_paths.py`, upload validation, API error handling, frontend error mapping | Env var test, rejected extension/content-type test, unsafe filename and path traversal tests, upload size cleanup test, no-secret-response check, allowed/disallowed CORS tests, media static-route test, frontend error mapping test, and frontend safe error tests. |
 | Release readiness | OR-1 to OR-10 | README, `.env.example`, `frontend/.env.example`, `.gitignore`, test suite, software engineering specification | Manual acceptance checklist, runtime artifact review, backend checks, frontend checks, and dependency audit. |
 
 ## Appendix A: Glossary

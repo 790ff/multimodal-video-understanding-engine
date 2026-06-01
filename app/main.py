@@ -4,9 +4,15 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.error_handling import (
+    app_error_response,
+    internal_error_response,
+    request_validation_error_response,
+)
 from app.api.videos import router as videos_router
 from app.config import ensure_runtime_dirs, get_settings
 from app.database import init_db
@@ -41,16 +47,18 @@ def create_app() -> FastAPI:
 
     @application.exception_handler(AppError)
     async def app_error_handler(_: Request, exc: AppError) -> JSONResponse:
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={
-                "error": {
-                    "code": exc.code,
-                    "message": exc.message,
-                    "details": exc.details,
-                }
-            },
-        )
+        return app_error_response(exc)
+
+    @application.exception_handler(RequestValidationError)
+    async def validation_error_handler(
+        _: Request,
+        __: RequestValidationError,
+    ) -> JSONResponse:
+        return request_validation_error_response()
+
+    @application.exception_handler(Exception)
+    async def unhandled_error_handler(_: Request, __: Exception) -> JSONResponse:
+        return internal_error_response()
 
     @application.get("/health", response_model=HealthResponse, tags=["system"])
     async def health_check() -> HealthResponse:

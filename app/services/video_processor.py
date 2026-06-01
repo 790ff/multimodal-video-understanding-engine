@@ -16,10 +16,11 @@ from app.adapters.provider_factory import (
 from app.adapters.scene_detector import DetectedScene, SceneDetector
 from app.adapters.transcriber import GeminiTranscriber, Transcriber, TranscriptSegmentData
 from app.config import Settings, get_settings
-from app.domain.errors import ConflictAppError, NotFoundAppError, ProcessingAppError
+from app.domain.errors import AppError, ConflictAppError, NotFoundAppError, ProcessingAppError
 from app.domain.status import VideoStatus
 from app.repositories.video_repository import VideoRepository
 from app.services.processing_lifecycle import STAGE_ERROR_CODES, AnalysisJob, ProcessingStage
+from app.services.storage_paths import controlled_child_path, ensure_path_within
 from app.services.timeline_builder import TimelineBuilder
 
 SAFE_ANALYSIS_ERROR_MESSAGE = "Video analysis failed."
@@ -48,7 +49,7 @@ class VideoProcessor:
         settings: Optional[Settings] = None,
     ) -> None:
         self.settings = settings or get_settings()
-        self.audio_extractor = audio_extractor or AudioExtractor()
+        self.audio_extractor = audio_extractor or AudioExtractor(settings=self.settings)
         self.frame_extractor = frame_extractor or FrameExtractor()
         self.scene_detector = scene_detector or SceneDetector()
         self.transcriber = transcriber or create_transcriber(self.settings)
@@ -68,9 +69,9 @@ class VideoProcessor:
                 code="video_already_processing",
             )
 
-        job = self._analysis_job(video_id=video.id, video_path=Path(video.stored_path))
-
+        job: AnalysisJob | None = None
         try:
+            job = self._analysis_job(video_id=video.id, video_path=Path(video.stored_path))
             self._start_job(job=job, video=video, repository=repository)
 
             self._ensure_output_dirs(audio_path=job.audio_path, frame_dir=job.frame_dir)
@@ -138,7 +139,8 @@ class VideoProcessor:
                 timeline_events=timeline_result.events,
             )
         except Exception as exc:
-            self._cleanup_failed_job(job)
+            if job is not None:
+                self._cleanup_failed_job(job)
             try:
                 self._mark_failed(video_id=video_id, repository=repository)
             except Exception as failure_exc:
@@ -148,13 +150,20 @@ class VideoProcessor:
                 ) from failure_exc
             raise ProcessingAppError(
                 SAFE_ANALYSIS_ERROR_MESSAGE,
-                code=self._safe_processing_code(exc, stage=job.stage),
+                code=self._safe_processing_code(
+                    exc,
+                    stage=job.stage if job is not None else ProcessingStage.PREPARING,
+                ),
             ) from exc
 
     def _analysis_job(self, *, video_id: str, video_path: Path) -> AnalysisJob:
         return AnalysisJob(
             video_id=video_id,
-            video_path=video_path,
+            video_path=ensure_path_within(
+                self.settings.upload_dir,
+                video_path,
+                code="unsafe_upload_path",
+            ),
             audio_path=self._audio_output_path(video_id),
             frame_dir=self._frame_output_dir(video_id),
         )
@@ -182,10 +191,19 @@ class VideoProcessor:
             ) from exc
 
     def _audio_output_path(self, video_id: str) -> Path:
-        return self.settings.audio_dir / video_id / "audio.wav"
+        return controlled_child_path(
+            self.settings.audio_dir,
+            video_id,
+            "audio.wav",
+            code="unsafe_audio_path",
+        )
 
     def _frame_output_dir(self, video_id: str) -> Path:
-        return self.settings.frame_dir / video_id
+        return controlled_child_path(
+            self.settings.frame_dir,
+            video_id,
+            code="unsafe_frame_path",
+        )
 
     def _ensure_output_dirs(self, *, audio_path: Path, frame_dir: Path) -> None:
         audio_path.parent.mkdir(parents=True, exist_ok=True)
@@ -348,6 +366,6 @@ class VideoProcessor:
             shutil.rmtree(job.frame_dir, ignore_errors=True)
 
     def _safe_processing_code(self, exc: Exception, *, stage: ProcessingStage) -> str:
-        if isinstance(exc, ProcessingAppError):
+        if isinstance(exc, AppError):
             return exc.code
         return STAGE_ERROR_CODES[stage]

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.database import get_db
 from app.db.models import EvidenceLinkModel, KeyframeModel, SceneModel, TranscriptSegmentModel
 from app.domain.errors import AppError, ConflictAppError, NotFoundAppError, StorageAppError
@@ -24,6 +25,7 @@ from app.schemas import (
     VideoUploadResponse,
 )
 from app.services.question_answerer import QuestionAnswerer, RetrievedEvidence
+from app.services.storage_paths import public_storage_reference
 from app.services.video_processor import VideoProcessor
 from app.services.video_storage import VideoStorageService
 
@@ -199,7 +201,7 @@ def get_video_timeline(
                     TimelineEvidence(
                         type="frame",
                         time=keyframe.time,
-                        path=keyframe.path,
+                        path=_safe_frame_reference(keyframe.path),
                     )
                 )
             elif link.evidence_type == "scene" and link.evidence_id in scenes:
@@ -261,8 +263,23 @@ def _timeline_evidence_from_retrieved(item: RetrievedEvidence) -> TimelineEviden
         time=item.time,
         start_time=item.start_time,
         end_time=item.end_time,
-        path=item.path,
+        path=_safe_frame_reference(item.path) if item.evidence_type == "frame" else None,
     )
+
+
+def _safe_frame_reference(path: str | None) -> str | None:
+    if not path:
+        return None
+    if path.startswith("frames/") and ".." not in Path(path).parts:
+        return path
+    try:
+        return public_storage_reference(
+            Path(path),
+            root=get_settings().frame_dir,
+            public_root="frames",
+        )
+    except AppError:
+        return None
 
 
 def _evidence_sort_key(

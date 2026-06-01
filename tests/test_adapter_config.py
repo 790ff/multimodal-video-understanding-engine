@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
 
+from app.adapters.audio_extractor import AudioExtractor
 from app.adapters.frame_analyzer import FrameAnalyzer, GeminiFrameAnalyzer
 from app.adapters.provider_factory import (
     FallbackTranscriber,
@@ -58,6 +60,27 @@ def test_frame_analyzer_missing_api_key_raises_controlled_error(tmp_path: Path) 
 
     assert exc_info.value.code == "frame_analysis_not_configured"
     assert exc_info.value.message == "Frame analysis service is not configured."
+
+
+def test_audio_extractor_timeout_raises_controlled_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    video_path = tmp_path / "sample.mp4"
+    audio_path = tmp_path / "audio" / "audio.wav"
+    video_path.write_bytes(b"fake video")
+
+    def fake_run(*args: object, **kwargs: object) -> None:
+        raise subprocess.TimeoutExpired(cmd="ffmpeg", timeout=kwargs["timeout"])
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    extractor = AudioExtractor(settings=make_settings(tmp_path))
+
+    with pytest.raises(ProcessingAppError) as exc_info:
+        extractor.extract(video_path=video_path, output_path=audio_path)
+
+    assert exc_info.value.code == "audio_extraction_timeout"
+    assert not audio_path.exists()
 
 
 def test_provider_factory_defaults_to_openai_adapters(tmp_path: Path) -> None:

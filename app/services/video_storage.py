@@ -12,13 +12,43 @@ from app.config import Settings, get_settings
 from app.db.models import VideoModel
 from app.domain.errors import FileTooLargeAppError, StorageAppError, ValidationAppError
 from app.repositories.video_repository import VideoRepository
+from app.services.storage_paths import controlled_child_path
+
+ALLOWED_CONTENT_TYPES_BY_EXTENSION = {
+    "mp4": {"application/mp4", "application/octet-stream", "video/mp4"},
+    "mov": {
+        "application/octet-stream",
+        "video/mov",
+        "video/quicktime",
+        "video/x-quicktime",
+    },
+}
 
 
 class VideoStorageService:
     def __init__(self, settings: Optional[Settings] = None) -> None:
         self.settings = settings or get_settings()
 
+    def validate_filename(self, filename: str) -> None:
+        if not filename or filename != filename.strip():
+            raise ValidationAppError(
+                "Uploaded filename is invalid.",
+                code="invalid_filename",
+            )
+        if (
+            filename in {".", ".."}
+            or "/" in filename
+            or "\\" in filename
+            or any(ord(character) < 32 or ord(character) == 127 for character in filename)
+            or len(filename.encode("utf-8")) > 255
+        ):
+            raise ValidationAppError(
+                "Uploaded filename is invalid.",
+                code="invalid_filename",
+            )
+
     def validate_extension(self, filename: str) -> str:
+        self.validate_filename(filename)
         extension = Path(filename).suffix.lower().lstrip(".")
         if not extension:
             raise ValidationAppError(
@@ -36,9 +66,38 @@ class VideoStorageService:
             )
         return extension
 
+    def validate_content_type(self, *, extension: str, content_type: Optional[str]) -> None:
+        normalized_content_type = (content_type or "").split(";", maxsplit=1)[0].strip().lower()
+        if not normalized_content_type:
+            return
+
+        allowed_content_types = ALLOWED_CONTENT_TYPES_BY_EXTENSION.get(
+            extension,
+            {f"video/{extension}", "application/octet-stream"},
+        )
+        if normalized_content_type not in allowed_content_types:
+            raise ValidationAppError(
+                "Uploaded media content type is not supported.",
+                code="unsupported_media_content_type",
+                details={
+                    "content_type": normalized_content_type,
+                    "allowed_content_types": sorted(allowed_content_types),
+                },
+            )
+
+    def validate_upload_metadata(self, *, filename: str, content_type: Optional[str]) -> str:
+        extension = self.validate_extension(filename)
+        self.validate_content_type(extension=extension, content_type=content_type)
+        return extension
+
     def build_upload_path(self, *, video_id: str, original_filename: str) -> Path:
         extension = self.validate_extension(original_filename)
-        return self.settings.upload_dir / video_id / f"original.{extension}"
+        return controlled_child_path(
+            self.settings.upload_dir,
+            video_id,
+            f"original.{extension}",
+            code="unsafe_upload_path",
+        )
 
     async def store_upload(
         self,
@@ -52,7 +111,10 @@ class VideoStorageService:
                 code="missing_filename",
             )
 
-        video_id, upload_path = self.prepare_upload_target(file.filename)
+        video_id, upload_path = self.prepare_upload_target(
+            filename=file.filename,
+            content_type=file.content_type,
+        )
         try:
             await self.write_upload_file(file, upload_path)
             return repository.create(
@@ -76,13 +138,18 @@ class VideoStorageService:
                 code="metadata_storage_failed",
             ) from exc
 
-    def prepare_upload_target(self, original_filename: str) -> tuple[str, Path]:
-        self.validate_extension(original_filename)
+    def prepare_upload_target(
+        self,
+        *,
+        filename: str,
+        content_type: Optional[str],
+    ) -> tuple[str, Path]:
+        self.validate_upload_metadata(filename=filename, content_type=content_type)
         for _ in range(10):
             video_id = str(uuid4())
             upload_path = self.build_upload_path(
                 video_id=video_id,
-                original_filename=original_filename,
+                original_filename=filename,
             )
             if not upload_path.parent.exists():
                 return video_id, upload_path
