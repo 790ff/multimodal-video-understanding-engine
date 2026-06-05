@@ -23,6 +23,7 @@ Date: 2026-06-01
 | Thamer | 2026-05-31 | Added M9 frontend product hardening, progress and recovery states, safe error categories, accessibility basics, responsive verification, and mocked frontend flow tests | 0.7 |
 | Thamer | 2026-05-31 | Added M10 backend processing lifecycle, retry and reanalysis rules, partial-output cleanup and reuse rules, controlled runtime error categories, and lifecycle regression tests | 0.8 |
 | Thamer | 2026-06-01 | Added M11 security and privacy baseline, upload validation hardening, controlled storage path guards, sanitized API errors, environment-driven CORS rules, FFmpeg timeout handling, exposure rules, and focused security tests | 0.9 |
+| Thamer | 2026-06-05 | Added M12 data lifecycle and storage architecture, data ownership rules, local reset and orphan cleanup decisions, SQLite assumptions, PostgreSQL transition path, and focused lifecycle/storage tests | 1.0 |
 
 ## Table of Contents
 
@@ -51,6 +52,8 @@ For M9, this document also covers frontend product hardening. M9 improves upload
 For M10, this document also covers backend reliability and the processing lifecycle. M10 makes status transitions, retry, reanalysis, partial-output cleanup, durable output reuse, controlled runtime error categories, and the queue-ready job boundary explicit. M10 does not add a distributed worker system, frontend redesign, retrieval ranking changes, accounts, roles, analytics, tracking, or new public product endpoints.
 
 For M11, this document also covers the security and privacy baseline for the local MVP. M11 hardens upload validation, controlled runtime storage paths, CORS configuration, API error sanitization, FFmpeg timeout handling, and media/data exposure rules. M11 documents that the local MVP remains without authentication, while any hosted or public media exposure stage must add authentication and authorization first. M11 does not add enterprise auth, roles, external security services, production hosting changes, analytics, tracking, retrieval ranking changes, frontend redesign, or public media-serving endpoints.
+
+For M12, this document also covers data lifecycle and storage architecture for the local MVP. M12 defines ownership for video metadata, uploads, audio, frames, transcript segments, scenes, timeline events, and evidence links; clarifies upload, analysis, retry, reanalysis, failed analysis, local reset, cleanup, orphan file, and missing runtime file rules; adds safe local reset and orphan cleanup helpers; and documents SQLite assumptions plus the PostgreSQL transition path. M12 does not add cloud object storage, authentication, user accounts, production hosting changes, public media routes, retrieval ranking changes, frontend redesign, analytics, tracking, or a public delete endpoint.
 
 ### 1.2 Document Conventions
 
@@ -138,6 +141,8 @@ The product must provide the following major functions:
 - Support safe backend retry and reanalysis without duplicated or stale timeline and evidence records.
 - Preserve reusable durable processing outputs where safe, including extracted audio, keyframe files, and scene records.
 - Enforce a local security and privacy baseline for upload validation, runtime storage paths, safe API errors, CORS allowlists, media exposure, and FFmpeg runtime failures.
+- Define local data lifecycle ownership for metadata, uploaded videos, extracted audio, extracted frames, transcript segments, scenes, timeline events, and evidence links.
+- Provide safe local reset and orphan runtime-file cleanup helpers for development and QA without adding a public delete endpoint.
 
 ### 2.3 User Classes and Characteristics
 
@@ -492,6 +497,8 @@ The backend shall treat analysis as a job-like workflow even while it still runs
 - NFR-25: Frontend tests shall cover the upload, analyze, timeline, and ask workflows plus key state transitions using mocked backend responses.
 - NFR-26: Backend processing lifecycle tests shall cover retry after failed analysis, explicit reanalysis, partial-output cleanup, idempotent reuse, processing conflicts, and safe error/status behavior.
 - NFR-33: Security baseline tests shall cover unsafe filenames, path traversal attempts, upload size cleanup, sanitized errors, allowed and disallowed CORS origins, and the absence of public static routes for media folders.
+- NFR-34: Runtime data lifecycle helpers shall only remove paths inside configured upload, audio, and frame roots, shall preserve or recreate `.gitkeep` files during local reset, and shall not depend on production storage assumptions.
+- NFR-35: Missing or unsafe runtime file metadata shall be handled through explicit lifecycle rules so retry or reanalysis does not reuse missing frame files, unsafe frame paths, stale timeline events, or stale evidence links.
 
 ### 5.5 Business Rules
 
@@ -516,6 +523,7 @@ The backend shall treat analysis as a job-like workflow even while it still runs
 - OR-10: The project shall document local frontend setup and API base URL configuration.
 - OR-11: The project shall document backend lifecycle rules before M10 delivery is considered complete.
 - OR-12: The project shall document security/privacy assumptions and verification coverage before M11 delivery is considered complete.
+- OR-13: The project shall document data lifecycle rules, storage architecture decisions, SQLite assumptions, PostgreSQL transition path, and local reset or cleanup guidance before M12 delivery is considered complete.
 
 ## Part II. Software Architecture
 
@@ -605,6 +613,16 @@ Storage rules:
 - Keep database schema compatible with future PostgreSQL migration.
 - Add indexes for `video_id`, `(video_id, start_time)`, and timeline lookup fields during implementation.
 
+M12 data ownership rules:
+
+- Video metadata is owned by the repository and stored in the `videos` table.
+- Uploaded video files are owned by the upload storage service and stored under the configured upload root by backend-generated video ID.
+- Extracted audio files are owned by the processing lifecycle and stored under the configured audio root by backend-generated video ID.
+- Extracted frame files are owned by the processing lifecycle and stored under the configured frame root by backend-generated video ID.
+- Transcript segments, scenes, timeline events, and evidence links are owned by the repository and replaced through repository methods.
+- Public API route handlers may render safe references, but they do not own media file deletion, reset, orphan cleanup, or processing checkpoints.
+- Local reset and orphan cleanup are service-level helper operations for development and QA. They are not public product endpoints in M12.
+
 ### 7.7 Async Readiness
 
 The MVP may execute analysis synchronously, but the architecture should treat analysis as a job-like workflow. This makes it easier to move analysis to Redis and Celery later.
@@ -683,6 +701,10 @@ Testing rules:
 | Centralized API error sanitizer | Keeps API/UI responses free of secrets, stack traces, `.env` paths, and private local paths | Requires controlled errors to pass through one response helper |
 | No public media static routes | Keeps uploads, audio, and extracted frames private in the local MVP | Evidence can reference frames by safe relative identifiers, but image serving is deferred |
 | Auth deferred for local MVP only | Keeps M11 scoped to baseline hardening without accounts or roles | Hosted or public media exposure must add authentication and authorization first |
+| Runtime storage lifecycle service | Keeps reset, orphan cleanup, reusable-file validation, and partial-output removal inside a storage/service boundary | Route handlers remain thin and cleanup logic can be tested with temporary runtime roots |
+| No Alembic added in M12 | The table contract did not change in M12 and SQLite initialization remains sufficient for the local MVP | Migration tooling should be introduced when schema changes recur or before release hardening requires tracked migrations |
+| SQLite local assumptions documented | SQLite remains the local metadata store for a single developer or QA workflow | Production concurrency, backups, and retention policies remain deferred |
+| PostgreSQL transition path documented | Future production metadata storage should move through SQLAlchemy URL configuration and tracked migrations | Requires migration scripts, connection pooling, foreign key/index verification, and environment-specific operational guidance later |
 
 ## Part III. Software Design
 
@@ -777,6 +799,7 @@ Application services coordinate the system workflows. They are allowed to call r
 | `video_storage.py` | Validate file metadata, generate safe names, store uploaded videos, and create video records. |
 | `video_processor.py` | Orchestrate the full analysis workflow and status transitions. |
 | `processing_lifecycle.py` | Define the local analysis job boundary, processing stages, and default stage-level error categories. |
+| `storage_lifecycle.py` | Keep runtime reset, orphan cleanup, reusable-file validation, and partial-output deletion inside controlled upload, audio, and frame roots. |
 | `timeline_builder.py` | Group transcript segments, scenes, keyframes, and visual summaries into ordered scene/window timeline events with evidence links. |
 | `question_answerer.py` | Retrieve bounded stored evidence and generate answers through a replaceable answer provider with timestamp references. |
 
@@ -789,6 +812,18 @@ M10 lifecycle rules:
 - Scene records may be reused for the same video. If scene detection fails safely, keyframe-based fallback windows are stored.
 - Transcript segments, frame summaries, timeline events, and evidence links are rebuilt for each successful run.
 - No distributed worker is introduced in M10; the job boundary exists so the same stages can move to a queue/job runner later.
+
+M12 storage lifecycle rules:
+
+- Upload storage creates one video directory under the configured upload root and removes that directory if file writing or metadata creation fails.
+- Analysis validates uploaded, audio, and frame paths against configured runtime roots before reuse, deletion, or writing.
+- Missing audio files are regenerated on retry or reanalysis.
+- Existing keyframe metadata is reused only when every referenced frame path is inside the configured frame root and every referenced file exists and is nonempty.
+- Missing, empty, or unsafe keyframe paths invalidate keyframe metadata before new frame extraction starts. The invalidation is checkpointed so a failed re-extraction cannot restore stale frame metadata.
+- Frame extraction failures remove the video-specific frame directory and leave the video in `failed` with a safe failure message.
+- Local reset removes runtime children under upload, audio, and frame roots, preserves or recreates `.gitkeep`, and can clear repository metadata when explicitly called by a local helper or test.
+- Orphan cleanup removes runtime child directories or files whose top-level name is not a known video ID, while keeping known video directories and `.gitkeep`.
+- Cleanup helpers reject paths outside configured runtime roots rather than following or deleting them.
 
 ### 8.5 Infrastructure Adapter Design
 
@@ -814,6 +849,8 @@ Responsibilities:
 - Retrieve timeline data by video identifier.
 - Retrieve ordered stored evidence for question answering.
 - Retrieve video status and failure reason.
+- List known video identifiers for local orphan cleanup.
+- Clear all local metadata for explicit local reset workflows.
 - Keep database operations away from API route handlers and processing services.
 
 ### 8.7 Domain Model Design
@@ -994,6 +1031,60 @@ The exact migration file will be created during implementation, but the MVP sche
 ### 9.6 Persistence Technology Decision
 
 The MVP should use SQLAlchemy for database access and SQLite as the database engine. Repository methods should hide ORM details from the API and application services. Alembic migrations should be added before the first GitHub release if the schema changes more than once during implementation; otherwise, a simple initialization script is acceptable for the earliest local prototype.
+
+M12 decision: Alembic is not added in M12 because the schema contract did not change. The lifecycle work adds repository and storage-service behavior around existing tables rather than changing table shape. Migration tooling remains appropriate once future milestones introduce schema changes that need tracked upgrade and downgrade paths.
+
+### 9.7 M12 Data Ownership and Lifecycle
+
+| Data Type | Owner | Storage | Lifecycle Rule |
+|---|---|---|---|
+| Video metadata | `VideoRepository` | `videos` table | Created on upload, status updated by lifecycle, cleared only through explicit local reset or future delete workflow. |
+| Upload file | `VideoStorageService` | `data/uploads/{video_id}/original.ext` | Created after validation; removed if upload writing or metadata persistence fails; not served publicly. |
+| Audio file | `VideoProcessor` through `RuntimeStorageLifecycle` | `data/audio/{video_id}/audio.wav` | Generated during analysis; reused when nonempty; regenerated when missing; removed when audio extraction fails during the extraction stage. |
+| Frame files | `VideoProcessor` through `RuntimeStorageLifecycle` | `data/frames/{video_id}/frame_*.jpg` | Generated during analysis; reused only when every referenced file is inside `FRAME_DIR`, exists, and is nonempty; partial frame directories are removed on frame extraction failure. |
+| Transcript segments | `VideoRepository` | `transcript_segments` table | Rebuilt for each successful retry or reanalysis; cleared at job start so stale transcript cannot appear in a new run. |
+| Scenes | `VideoRepository` | `scenes` table | Reused when present because they describe durable video boundaries; rebuilt or stored as fallback windows when absent. |
+| Timeline events | `VideoRepository` | `timeline_events` table | Replaced for each successful analysis run; cleared at job start and never appended to stale events. |
+| Evidence links | `VideoRepository` | `evidence_links` table | Owned by timeline events and replaced through timeline replacement; cascade deletion removes old links. |
+
+Lifecycle rules:
+
+- Upload: validate filename, extension, content type, size, and target path; write to a temporary local file; atomically replace the final upload path; create metadata; clean the video-specific upload directory on write or metadata failure.
+- Analyze: reject videos already in `processing`; create an `AnalysisJob`; mark `processing`; clear volatile outputs; validate runtime paths; reuse durable audio, keyframes, and scenes only when safe; rebuild transcript, visual summaries, timeline, and evidence.
+- Retry: allowed from `failed`; keeps safe durable audio, valid keyframes, and scenes; clears previous safe failure message; replaces volatile metadata on success.
+- Reanalysis: allowed from `analyzed`; reuses valid durable files where safe; rebuilds transcript, visual summaries, timeline events, and evidence links so old answers do not depend on stale records.
+- Failed analysis: stores the safe message `Video analysis failed.` on the video record, removes unsafe partial frame outputs when frame extraction fails, removes partial audio output when audio extraction fails, and leaves committed durable checkpoints only when they are internally consistent.
+- Missing audio file: treated as a reusable checkpoint miss and regenerated during retry or reanalysis.
+- Missing, empty, or unsafe frame file: invalidates keyframe metadata before re-extraction; invalidation is committed before the new extraction attempt so a later extraction failure does not restore stale metadata.
+- Missing upload file: analysis fails through a controlled processing path because the original source video is required to regenerate dependent outputs.
+- Orphan runtime files: local cleanup may remove upload, audio, or frame child directories or files whose top-level name is not a known video ID. Known video directories and `.gitkeep` are kept.
+- Local reset: local helper may clear repository metadata and runtime children under `data/uploads`, `data/audio`, and `data/frames`; it preserves or recreates `.gitkeep`; it is not a public API endpoint.
+- Cleanup safety: cleanup helpers must reject candidate paths outside configured runtime roots and must not follow production storage assumptions such as cloud buckets, retention classes, or remote deletes.
+
+### 9.8 Schema Evolution Baseline
+
+SQLite assumptions:
+
+- SQLite is the local MVP metadata store for one developer or QA workflow.
+- `Base.metadata.create_all()` remains the local initialization path while the schema is stable.
+- Local `.sqlite3` files and SQLite sidecar files remain excluded from source control.
+- Tests use temporary SQLite databases and temporary runtime folders.
+- SQLite is not treated as a production concurrency, backup, retention, or multi-user storage solution.
+
+Current schema baseline:
+
+- The M12 baseline tables are `videos`, `transcript_segments`, `keyframes`, `scenes`, `timeline_events`, and `evidence_links`.
+- The current schema already includes status constraints, time-range constraints, unique stored video and frame paths, and lookup indexes for video/time reads.
+- M12 does not require new columns or tables because the lifecycle rules can be enforced through repository and storage-service behavior.
+
+PostgreSQL transition path:
+
+- Keep SQLAlchemy models and repository methods as the application database boundary.
+- Move `DATABASE_URL` to a PostgreSQL URL in the target environment.
+- Add Alembic before the transition so schema creation, upgrades, and rollbacks are explicit.
+- Verify PostgreSQL equivalents for status checks, time-range checks, indexes, foreign keys, cascade behavior, and path-length assumptions.
+- Add environment-specific connection pooling, transaction isolation guidance, backup/restore practice, and retention policy before production use.
+- Keep large media files out of PostgreSQL; uploads, audio, and frames should move to a managed object storage layer only in a later milestone with authentication and authorization.
 
 ## 10. API and Integration Design
 
@@ -1272,6 +1363,9 @@ Unit tests should cover:
 - Error handling for missing video IDs and invalid states.
 - Analysis lifecycle stage behavior, reusable output checkpoints, and safe stage-level error categories.
 - Safe API error sanitization for secrets, stack traces, `.env` paths, and private local paths.
+- Runtime reset and orphan cleanup helpers, including `.gitkeep` preservation and outside-root deletion rejection.
+- Repository lifecycle helpers for known video ID lookup and explicit local metadata reset.
+- Missing or unsafe keyframe metadata invalidation before retry or reanalysis.
 - Frontend user-facing error mapping.
 - Frontend time and evidence formatting helpers.
 - Frontend progress, retry, and recovery state transitions where they are handled in local workflow state.
@@ -1301,6 +1395,11 @@ Integration tests should cover:
 - Enforcing upload size limits without leaving partial upload files.
 - Confirming runtime media folders are not public static routes.
 - Returning safe relative frame evidence references instead of private local frame paths.
+- Reanalyzing when a referenced frame file is missing and confirming new frame files and metadata are internally consistent.
+- Rejecting unsafe stored keyframe paths during analysis and rebuilding frame metadata inside the configured frame root.
+- Ensuring failed reanalysis after invalid keyframe metadata does not restore stale metadata.
+- Cleaning orphan runtime files without deleting known video directories or `.gitkeep`.
+- Resetting local runtime files and optional local metadata without deleting outside configured runtime roots.
 - Building and type-checking the frontend application.
 - Rendering frontend upload, analyze, timeline, and ask flows with mocked backend responses.
 - Rendering frontend recovery states for unsupported files, provider configuration failures, FFmpeg/media processing failures, failed analysis, and server connectivity failures.
@@ -1372,6 +1471,8 @@ M10 backend lifecycle delivery also requires the backend checks above and focuse
 
 M11 security and privacy baseline delivery also requires the backend checks above and focused coverage for unsupported and unsafe upload filenames, path traversal rejection, upload size cleanup, sanitized fake-secret errors, allowed and disallowed CORS origins, FFmpeg timeout handling, safe frame evidence references, and absence of public static media routes.
 
+M12 data lifecycle and storage architecture delivery also requires the backend checks above and focused coverage for repository lifecycle helpers, safe local reset, orphan runtime cleanup, missing frame regeneration, unsafe frame metadata invalidation, failed reanalysis consistency, `.gitkeep` preservation, and deletion rejection outside configured runtime roots.
+
 ## 12. Implementation and Release Plan
 
 ### 12.1 Implementation Milestones
@@ -1389,6 +1490,7 @@ M11 security and privacy baseline delivery also requires the backend checks abov
 | M9: Frontend product hardening | Upload progress, analysis progress, retry/recovery states, actionable safe errors, responsive layout, accessibility basics, and mocked frontend flow tests. |
 | M10: Backend processing lifecycle | Explicit retry/reanalysis transitions, cleanup and reuse rules, controlled runtime error categories, queue-ready job boundary, and lifecycle regression tests. |
 | M11: Security and privacy baseline | Upload validation hardening, controlled storage path guards, sanitized API errors, environment-driven CORS allowlist, FFmpeg timeout handling, media exposure rules, authentication decision documentation, and focused security regression tests. |
+| M12: Data lifecycle and storage architecture | Data ownership rules, safe local reset and orphan cleanup helpers, missing runtime file handling, repository/storage boundary tightening, SQLite assumptions, PostgreSQL transition path, and focused lifecycle/storage tests. |
 
 ### 12.2 Release Scope
 
@@ -1407,6 +1509,7 @@ Included in the first MVP:
 - Frontend product hardening for progress, recovery, safe errors, responsive layout, accessibility basics, and mocked workflow tests.
 - Backend processing lifecycle hardening for safe retry, explicit reanalysis, controlled errors, and durable reusable checkpoints.
 - Backend security and privacy baseline hardening for upload validation, safe runtime paths, safe API errors, CORS allowlist behavior, FFmpeg timeout handling, and private media exposure rules.
+- Data lifecycle and storage architecture hardening for ownership rules, local reset, orphan cleanup, missing runtime files, repository metadata boundaries, SQLite assumptions, and PostgreSQL migration planning.
 
 Deferred from the first MVP:
 
@@ -1419,7 +1522,7 @@ Deferred from the first MVP:
 - Hosted production deployment.
 - In-browser serving of extracted frame image files.
 
-M8 adds the first product web app while preserving the backend architecture and API scope. M9 hardens that web app for local product use. M10 hardens the backend lifecycle behind the existing API. M11 hardens the security and privacy baseline without adding public media serving or accounts. These milestones do not add new public product endpoints, ranking, embeddings, vector search, background processing, authentication, analytics, tracking, or production deployment architecture.
+M8 adds the first product web app while preserving the backend architecture and API scope. M9 hardens that web app for local product use. M10 hardens the backend lifecycle behind the existing API. M11 hardens the security and privacy baseline without adding public media serving or accounts. M12 hardens data lifecycle and local storage cleanup without adding cloud storage, a public delete endpoint, authentication, analytics, tracking, or production hosting changes. These milestones do not add new public product endpoints, ranking, embeddings, vector search, background processing, authentication, analytics, tracking, or production deployment architecture.
 
 ### 12.3 GitHub Release Readiness
 
@@ -1443,7 +1546,7 @@ Before the first GitHub release, the repository should include:
 
 ### 12.4 Known Limitations
 
-The M11 local MVP has the following known limitations:
+The M12 local MVP has the following known limitations:
 
 - No authentication, authorization, user accounts, or multi-tenant data isolation.
 - Hosted deployment or public media exposure is blocked until authentication and authorization are added.
@@ -1451,6 +1554,8 @@ The M11 local MVP has the following known limitations:
 - A process crash during synchronous analysis can still leave a video in `processing`; a future worker/job runner should add lease, timeout, and resume controls.
 - No ranking, embeddings, vector search, or deep retrieval mode. Question answering uses stored evidence only.
 - No production storage layer. SQLite and local `data/` folders are intended for local MVP verification.
+- Local reset and orphan cleanup helpers are developer/QA utilities only and are not exposed as public API endpoints.
+- No tracked migration tool is added in M12 because the schema did not change; Alembic remains deferred until schema evolution requires tracked migrations.
 - No production deployment hardening such as HTTPS termination, cloud storage, worker scaling, monitoring, or backup policy.
 - Extracted frame evidence is shown as timestamped frame references; serving the extracted frame image files inside the browser is deferred.
 
@@ -1465,7 +1570,9 @@ Common local issues and expected responses:
 | Provider key missing | Analysis fails when provider-backed transcription or frame analysis starts. | Set the matching provider key in local `.env`, restart Uvicorn, and retry analysis. |
 | Analysis failed after partial processing | Status shows `failed` with a safe message. | Fix the local issue, then retry analysis for the same video ID; valid audio, keyframes, and scenes may be reused. |
 | Video appears stuck in `processing` after interrupted local run | The API process may have stopped during synchronous analysis. | Restart the backend and rerun analysis for the same video ID after confirming no request is still active. |
-| SQLite or local data confusion | Old uploads, frames, audio, or database records affect a manual run. | Stop the server, clear local runtime files under `data/` as needed, keep `.gitkeep` files, then restart. |
+| SQLite or local data confusion | Old uploads, frames, audio, or database records affect a manual run. | Stop the server, use the local reset guidance to clear runtime children under `data/uploads`, `data/audio`, and `data/frames` while preserving `.gitkeep`; clear local SQLite metadata only when intentionally resetting the local workspace. |
+| Orphan runtime files | Upload, audio, or frame folders exist for video IDs that are no longer present in SQLite. | Use the local orphan cleanup helper or manually remove only child folders under configured runtime roots whose top-level name is not a known video ID; do not remove `.gitkeep`. |
+| Missing frame files during reanalysis | SQLite has keyframe metadata but one or more referenced files are missing or empty. | Rerun analysis for the same video ID; the processor invalidates stale keyframe metadata and re-extracts frames inside the configured frame root. |
 | `.env` changes not taking effect | Server still uses old settings. | Restart Uvicorn after editing `.env`. |
 | Frontend cannot reach backend | Web app shows backend offline or requests fail in the browser. | Start Uvicorn, confirm `VITE_API_BASE_URL`, and confirm `CORS_ALLOWED_ORIGINS` includes the Vite origin. |
 | Port 5173 already in use | Vite cannot bind to `127.0.0.1:5173`. | Stop the process using 5173 or run Vite on another port and update backend CORS plus frontend base URL settings. |
@@ -1483,6 +1590,7 @@ This matrix connects requirements to implementation modules and planned verifica
 | Scene detection | FR-13 to FR-14 | `adapters/scene_detector.py` | Scene fallback test and mocked detection test. |
 | Failure handling | FR-15, NFR-8, NFR-18 | `domain/errors.py`, `video_processor.py`, API exception handlers | Corrupted video test, missing config test, safe error response test. |
 | Backend processing lifecycle | FR-52 to FR-62, NFR-26 | `video_processor.py`, `processing_lifecycle.py`, `video_repository.py` | Retry, reanalysis, cleanup, reuse, processing conflict, and safe status tests. |
+| Data lifecycle and local storage cleanup | NFR-34 to NFR-35, OR-13 | `storage_lifecycle.py`, `video_processor.py`, `video_storage.py`, `video_repository.py` | Safe reset, orphan cleanup, `.gitkeep` preservation, missing frame regeneration, unsafe frame metadata invalidation, failed reanalysis consistency, and outside-root deletion rejection tests. |
 | Visual analysis | FR-16 to FR-17, FR-21 | `adapters/frame_analyzer.py` | Mock vision client test and frame selection test. |
 | Timeline generation | FR-18 to FR-20 | `timeline_builder.py`, timeline repository methods, `/videos/{video_id}/timeline` | Timeline ordering test, evidence link test, and timeline API test. |
 | Video question answering | FR-22 to FR-28a | `question_answerer.py`, evidence retrieval methods, `/videos/{video_id}/ask` | Success, missing video, not analyzed, empty question, insufficient evidence, and timestamped evidence tests. |
@@ -1652,6 +1760,6 @@ This swimlane diagram shows the API and integration flow across the user/client,
 | TBD-1 | Confirm exact external API models, versions, and documentation references before implementation. |
 | TBD-2 | Review whether the 250 MB local MVP upload limit should change for any future hosted deployment. |
 | TBD-3 | Resolved in M8: product web app foundation implemented with React/Vite for the local MVP. |
-| TBD-4 | Confirm final database choice for the MVP: SQLite or PostgreSQL. |
+| TBD-4 | Resolved in M12: SQLite remains the local MVP metadata store; PostgreSQL is the documented future transition path. |
 | TBD-5 | Confirm expected video duration and resolution limits for product validation. |
 | TBD-6 | Confirm final ownership and maintainer details for the specification cover page if required. |

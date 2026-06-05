@@ -140,6 +140,24 @@ class FakeFrameAnalyzer:
         ]
 
 
+class RootCheckingFrameAnalyzer:
+    def __init__(self, root: Path) -> None:
+        self.root = root.resolve(strict=False)
+        self.frame_paths: list[Path] = []
+
+    def analyze(self, frame_paths: list[Path]) -> list[FrameAnalysisResult]:
+        self.frame_paths = frame_paths
+        assert frame_paths
+        assert all(path.resolve(strict=False).is_relative_to(self.root) for path in frame_paths)
+        return [
+            FrameAnalysisResult(
+                frame_path=frame_path,
+                visual_summary=f"Safe visual summary for {frame_path.name}",
+            )
+            for frame_path in frame_paths
+        ]
+
+
 class FakeSecondPassFrameAnalyzer:
     def analyze(self, frame_paths: list[Path]) -> list[FrameAnalysisResult]:
         return [
@@ -1099,6 +1117,162 @@ def test_reanalysis_replaces_records_without_stale_timeline_or_evidence(
         ("Visual: Updated visual summary for frame_000002.jpg",),
     ]
     assert evidence_link_count == 5
+
+
+def test_reanalysis_reextracts_keyframes_when_runtime_frame_file_is_missing(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    first_processor = VideoProcessor(
+        audio_extractor=FakeAudioExtractor(),
+        frame_extractor=FakeFrameExtractor(),
+        scene_detector=FakeSceneDetector(),
+        transcriber=FakeTranscriber(),
+        frame_analyzer=FakeFrameAnalyzer(),
+        settings=get_settings(),
+    )
+    client.app.dependency_overrides[get_video_processor] = lambda: first_processor
+
+    upload_response = client.post(
+        "/videos/upload",
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "video/mp4")},
+    )
+    video_id = upload_response.json()["video_id"]
+    first_response = client.post(f"/videos/{video_id}/analyze")
+    assert first_response.status_code == 200
+
+    missing_frame = tmp_path / "frames" / video_id / "frame_000002.jpg"
+    missing_frame.unlink()
+
+    second_processor = VideoProcessor(
+        audio_extractor=FailingAudioExtractor(),
+        frame_extractor=FakeFrameExtractor(),
+        scene_detector=FailingSceneDetector(),
+        transcriber=FakeSecondPassTranscriber(),
+        frame_analyzer=FakeSecondPassFrameAnalyzer(),
+        settings=get_settings(),
+    )
+    client.app.dependency_overrides[get_video_processor] = lambda: second_processor
+
+    second_response = client.post(f"/videos/{video_id}/analyze")
+
+    assert second_response.status_code == 200
+    assert missing_frame.exists()
+    with sqlite3.connect(tmp_path / "test_video_ai.sqlite3") as connection:
+        rows = connection.execute(
+            """
+            select
+                (select count(*) from keyframes where video_id = ?),
+                (select count(*) from timeline_events where video_id = ?),
+                (
+                    select count(*)
+                    from keyframes
+                    where video_id = ? and visual_summary like 'Updated%'
+                )
+            """,
+            (video_id, video_id, video_id),
+        ).fetchone()
+
+    assert rows == (2, 2, 2)
+
+
+def test_analysis_ignores_keyframe_metadata_outside_frame_root(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    upload_response = client.post(
+        "/videos/upload",
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "video/mp4")},
+    )
+    video_id = upload_response.json()["video_id"]
+    outside_frame = tmp_path / "outside_frame.jpg"
+    outside_frame.write_bytes(b"outside frame")
+    with sqlite3.connect(tmp_path / "test_video_ai.sqlite3") as connection:
+        connection.execute(
+            """
+            insert into keyframes (id, video_id, time, path, visual_summary)
+            values (?, ?, ?, ?, ?)
+            """,
+            ("unsafe-keyframe", video_id, 0.0, str(outside_frame), "stale unsafe summary"),
+        )
+
+    frame_analyzer = RootCheckingFrameAnalyzer(tmp_path / "frames")
+    processor = VideoProcessor(
+        audio_extractor=FakeAudioExtractor(),
+        frame_extractor=FakeFrameExtractor(),
+        scene_detector=FakeSceneDetector(),
+        transcriber=FakeTranscriber(),
+        frame_analyzer=frame_analyzer,
+        settings=get_settings(),
+    )
+    client.app.dependency_overrides[get_video_processor] = lambda: processor
+
+    response = client.post(f"/videos/{video_id}/analyze")
+
+    assert response.status_code == 200
+    assert outside_frame.read_bytes() == b"outside frame"
+    assert frame_analyzer.frame_paths == [
+        tmp_path / "frames" / video_id / "frame_000001.jpg",
+        tmp_path / "frames" / video_id / "frame_000002.jpg",
+    ]
+    with sqlite3.connect(tmp_path / "test_video_ai.sqlite3") as connection:
+        keyframe_rows = connection.execute(
+            "select id, path from keyframes where video_id = ? order by time",
+            (video_id,),
+        ).fetchall()
+
+    assert len(keyframe_rows) == 2
+    assert "unsafe-keyframe" not in {row[0] for row in keyframe_rows}
+    assert all(str(tmp_path / "frames" / video_id) in row[1] for row in keyframe_rows)
+
+
+def test_failed_reanalysis_after_invalid_keyframes_does_not_restore_stale_metadata(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    upload_response = client.post(
+        "/videos/upload",
+        files={"file": ("sample.mp4", b"fake sample mp4 bytes", "video/mp4")},
+    )
+    video_id = upload_response.json()["video_id"]
+    outside_frame = tmp_path / "outside_frame.jpg"
+    outside_frame.write_bytes(b"outside frame")
+    with sqlite3.connect(tmp_path / "test_video_ai.sqlite3") as connection:
+        connection.execute(
+            """
+            insert into keyframes (id, video_id, time, path, visual_summary)
+            values (?, ?, ?, ?, ?)
+            """,
+            ("unsafe-keyframe", video_id, 0.0, str(outside_frame), "stale unsafe summary"),
+        )
+
+    processor = VideoProcessor(
+        audio_extractor=FakeAudioExtractor(),
+        frame_extractor=DirtyFailingFrameExtractor(),
+        scene_detector=FakeSceneDetector(),
+        transcriber=FakeTranscriber(),
+        frame_analyzer=FakeFrameAnalyzer(),
+        settings=get_settings(),
+    )
+    client.app.dependency_overrides[get_video_processor] = lambda: processor
+
+    response = client.post(f"/videos/{video_id}/analyze")
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "frame_extraction_failed"
+    assert outside_frame.read_bytes() == b"outside frame"
+    assert not (tmp_path / "frames" / video_id).exists()
+    with sqlite3.connect(tmp_path / "test_video_ai.sqlite3") as connection:
+        rows = connection.execute(
+            """
+            select
+                (select status from videos where id = ?),
+                (select count(*) from keyframes where video_id = ?)
+            """,
+            (video_id, video_id),
+        ).fetchone()
+
+    assert rows == ("failed", 0)
 
 
 def test_frame_extraction_failure_cleans_partial_frame_outputs(

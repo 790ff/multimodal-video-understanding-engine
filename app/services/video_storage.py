@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 from typing import Optional
 from uuid import uuid4
@@ -12,6 +11,7 @@ from app.config import Settings, get_settings
 from app.db.models import VideoModel
 from app.domain.errors import FileTooLargeAppError, StorageAppError, ValidationAppError
 from app.repositories.video_repository import VideoRepository
+from app.services.storage_lifecycle import RuntimeStorageLifecycle
 from app.services.storage_paths import controlled_child_path
 
 ALLOWED_CONTENT_TYPES_BY_EXTENSION = {
@@ -26,8 +26,13 @@ ALLOWED_CONTENT_TYPES_BY_EXTENSION = {
 
 
 class VideoStorageService:
-    def __init__(self, settings: Optional[Settings] = None) -> None:
+    def __init__(
+        self,
+        settings: Optional[Settings] = None,
+        storage_lifecycle: Optional[RuntimeStorageLifecycle] = None,
+    ) -> None:
         self.settings = settings or get_settings()
+        self.storage_lifecycle = storage_lifecycle or RuntimeStorageLifecycle(self.settings)
 
     def validate_filename(self, filename: str) -> None:
         if not filename or filename != filename.strip():
@@ -182,4 +187,8 @@ class VideoStorageService:
             raise
 
     def cleanup_upload_dir(self, upload_dir: Path) -> None:
-        shutil.rmtree(upload_dir, ignore_errors=True)
+        self.storage_lifecycle.remove_runtime_path(
+            upload_dir,
+            root=self.settings.upload_dir,
+            code="unsafe_upload_path",
+        )
