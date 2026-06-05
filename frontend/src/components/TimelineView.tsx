@@ -1,4 +1,4 @@
-import { Clock3, ListVideo, Loader2, RefreshCw } from "lucide-react";
+import { BookOpenText, Clock3, ListVideo, Loader2, RefreshCw } from "lucide-react";
 
 import type { TimelineResponse } from "../api/types";
 import { formatRange } from "../utils/time";
@@ -25,14 +25,14 @@ export function TimelineView({ timeline, loading, analyzed, stage, onReload }: T
     >
       <div className="section-heading">
         <div>
-          <span className="eyebrow">Evidence</span>
-          <h2 id="timeline-title">Timeline</h2>
+          <span className="eyebrow">Notes</span>
+          <h2 id="timeline-title">Review notes</h2>
         </div>
-        {loading ? <Loader2 size={20} aria-hidden="true" className="spin" /> : <Clock3 size={20} />}
+        {loading ? <Loader2 size={20} aria-hidden="true" className="spin" /> : <BookOpenText size={20} />}
       </div>
 
       {loading ? (
-        <EmptyState icon={Loader2} title="Loading timeline" message="Fetching stored events." />
+        <EmptyState icon={Loader2} title="Preparing notes" message="Getting the review ready." />
       ) : !analyzed ? (
         <EmptyState
           icon={stage === "processing" ? Loader2 : ListVideo}
@@ -42,25 +42,40 @@ export function TimelineView({ timeline, loading, analyzed, stage, onReload }: T
       ) : !timeline || timeline.events.length === 0 ? (
         <EmptyState
           icon={ListVideo}
-          title="No events"
-          message="No timeline events were loaded."
-          actionLabel="Reload timeline"
+          title="No notes found"
+          message="Try reloading the review notes."
+          actionLabel="Reload notes"
           actionIcon={RefreshCw}
           actionDisabled={loading}
           onAction={onReload}
         />
       ) : (
-        <ol className="timeline-list">
-          {timeline.events.map((event, index) => (
-            <li key={`${event.start_time}-${event.end_time}-${index}`} className="timeline-event">
-              <div className="event-time">{formatRange(event.start_time, event.end_time)}</div>
-              <div className="event-body">
-                <p>{event.summary}</p>
-                <EvidenceList evidence={event.evidence} />
-              </div>
-            </li>
-          ))}
-        </ol>
+        <div className="review-notes">
+          <section className="quick-note" aria-labelledby="quick-note-title">
+            <span className="eyebrow">Quick read</span>
+            <h3 id="quick-note-title">First thing to know</h3>
+            <p>{timeline.events[0].summary}</p>
+          </section>
+
+          <ol className="timeline-list" aria-label="Key moments">
+            {timeline.events.map((event, index) => (
+              <li key={`${event.start_time}-${event.end_time}-${index}`} className="timeline-event">
+                <div className="event-time">
+                  <Clock3 size={15} aria-hidden="true" />
+                  {formatRange(event.start_time, event.end_time)}
+                </div>
+                <div className="event-body">
+                  <span className="event-kicker">Moment {index + 1}</span>
+                  <p>{event.summary}</p>
+                  <details className="source-details">
+                    <summary>Show sources</summary>
+                    <EvidenceList evidence={event.evidence} />
+                  </details>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
       )}
     </section>
   );
@@ -68,26 +83,26 @@ export function TimelineView({ timeline, loading, analyzed, stage, onReload }: T
 
 function timelineEmptyTitle(stage: WorkflowStage) {
   if (stage === "uploaded") {
-    return "Ready for analysis";
+    return "Ready to review";
   }
   if (stage === "processing") {
-    return "Building timeline";
+    return "Writing notes";
   }
   if (stage === "failed") {
-    return "Timeline unavailable";
+    return "Notes unavailable";
   }
-  return "No timeline yet";
+  return "No video yet";
 }
 
 function timelineEmptyMessage(stage: WorkflowStage) {
   if (stage === "uploaded") {
-    return "Timeline events will appear after analysis completes.";
+    return "Start the review to see the important moments.";
   }
   if (stage === "processing") {
-    return "Events will appear here when processing finishes.";
+    return "The notes will appear here when the review finishes.";
   }
   if (stage === "failed") {
-    return "Retry analysis to generate timestamped evidence.";
+    return "Try the review again from the progress panel.";
   }
-  return "Upload a video to create timestamped evidence.";
+  return "Add a video to create review notes.";
 }

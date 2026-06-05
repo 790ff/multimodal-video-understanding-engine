@@ -31,8 +31,8 @@ export function UploadPanel({
     <section className="tool-panel upload-panel" aria-labelledby="upload-title" aria-busy={uploading}>
       <div className="panel-heading">
         <div>
-          <span className="eyebrow">Input</span>
-          <h2 id="upload-title">Video upload</h2>
+          <span className="eyebrow">Start</span>
+          <h2 id="upload-title">Add video</h2>
         </div>
         <FileVideo2 size={22} aria-hidden="true" />
       </div>
@@ -60,7 +60,7 @@ export function UploadPanel({
         disabled={uploadDisabled}
       >
         <UploadCloud size={17} aria-hidden="true" />
-        {uploading ? "Uploading" : uploaded ? "Uploaded" : progress.phase === "failed" ? "Retry upload" : "Upload"}
+        {uploading ? "Adding" : uploaded ? "Video added" : progress.phase === "failed" ? "Try again" : "Add video"}
       </button>
     </section>
   );

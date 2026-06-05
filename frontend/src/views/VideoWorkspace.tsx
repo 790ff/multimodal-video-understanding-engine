@@ -1,4 +1,5 @@
 import { AskPanel } from "../components/AskPanel";
+import { DeveloperDetailsPanel } from "../components/DeveloperDetailsPanel";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { TimelineView } from "../components/TimelineView";
 import { UploadPanel } from "../components/UploadPanel";
@@ -21,8 +22,9 @@ export function VideoWorkspace() {
     <main className="app-shell">
       <header className="app-header">
         <div>
-          <span className="eyebrow">Video analysis workspace</span>
-          <h1>Multimodal Video Understanding Engine</h1>
+          <span className="eyebrow">Private video review</span>
+          <h1>SceneNotes</h1>
+          <p>Turn a video into clear notes you can read, revisit, and question.</p>
         </div>
         <span className={`stage-pill stage-pill--${stage}`}>{stageLabel(stage)}</span>
       </header>
@@ -45,40 +47,36 @@ export function VideoWorkspace() {
           />
           <VideoControlPanel
             stage={stage}
-            apiBaseUrl={apiBaseUrl}
-            upload={state.upload}
+            hasVideo={state.hasVideo}
             status={state.status}
             analysis={state.analysis}
             canAnalyze={state.canAnalyze}
-            refreshingStatus={state.busy.refreshingStatus}
             analyzing={state.busy.analyzing}
             analysisProgress={state.analysisProgress}
             onAnalyze={actions.analyzeVideo}
-            onRefreshStatus={() => void actions.refreshStatus()}
-            onLoadVideoId={actions.loadVideoId}
             onReset={actions.resetWorkspace}
           />
         </aside>
 
-        <section className="results-column" aria-label="Analysis results">
+        <section className="results-column" aria-label="Review results">
           <div className="results-header">
             <div>
-              <span className="eyebrow">Evidence</span>
-              <h2>Timeline and questions</h2>
+              <span className="eyebrow">Review</span>
+              <h2>Your video notes</h2>
             </div>
             {state.analysis ? (
-              <div className="result-metrics" aria-label="Analysis counts">
+              <div className="result-metrics" aria-label="Review counts">
                 <span>
-                  <strong>{state.analysis.transcript_segments}</strong> transcripts
-                </span>
-                <span>
-                  <strong>{state.analysis.keyframes}</strong> frames
+                  <strong>{state.analysis.timeline_events}</strong> moments
                 </span>
                 <span>
                   <strong>{state.analysis.scenes}</strong> scenes
                 </span>
                 <span>
-                  <strong>{state.analysis.timeline_events}</strong> events
+                  <strong>{state.analysis.transcript_segments}</strong> notes
+                </span>
+                <span>
+                  <strong>{state.analysis.keyframes}</strong> visuals
                 </span>
               </div>
             ) : (
@@ -100,6 +98,15 @@ export function VideoWorkspace() {
             asking={state.busy.asking}
             onAsk={actions.askQuestion}
           />
+
+          <DeveloperDetailsPanel
+            apiBaseUrl={apiBaseUrl}
+            upload={state.upload}
+            status={state.status}
+            refreshingStatus={state.busy.refreshingStatus}
+            onRefreshStatus={() => void actions.refreshStatus()}
+            onLoadVideoId={actions.loadVideoId}
+          />
         </section>
       </section>
     </main>
@@ -108,13 +115,13 @@ export function VideoWorkspace() {
 
 function stageLabel(stage: WorkflowStage) {
   if (stage === "uploaded") {
-    return "Ready to analyze";
+    return "Ready to review";
   }
   if (stage === "processing") {
-    return "Analyzing";
+    return "Reviewing";
   }
   if (stage === "analyzed") {
-    return "Evidence ready";
+    return "Notes ready";
   }
   if (stage === "failed") {
     return "Needs attention";
@@ -124,13 +131,13 @@ function stageLabel(stage: WorkflowStage) {
 
 function stageResultLabel(stage: WorkflowStage) {
   if (stage === "uploaded") {
-    return "Results unlock after analysis";
+    return "Start review to create notes";
   }
   if (stage === "processing") {
-    return "Building evidence";
+    return "Preparing notes";
   }
   if (stage === "failed") {
-    return "Analysis paused";
+    return "Review paused";
   }
-  return "Waiting for upload";
+  return "Waiting for video";
 }

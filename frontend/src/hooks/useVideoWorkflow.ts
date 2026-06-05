@@ -174,8 +174,8 @@ export function useVideoWorkflow() {
     if (!selectedFile) {
       setError({
         title: "Video required",
-        message: "Choose an MP4 or MOV file before uploading.",
-        recovery: "Select a supported video file and upload again.",
+        message: "Choose an MP4 or MOV file first.",
+        recovery: "Select a supported video and try again.",
       });
       setLastFailedOperation("upload");
       return;
@@ -194,7 +194,7 @@ export function useVideoWorkflow() {
       setUploadProgress({
         phase: "failed",
         percent: 0,
-        label: "Upload blocked",
+        label: "File blocked",
         detail: "Choose an MP4 or MOV file.",
       });
       return;
@@ -204,7 +204,7 @@ export function useVideoWorkflow() {
     setUploadProgress({
       phase: "uploading",
       percent: 0,
-      label: "Uploading video",
+      label: "Adding video",
       detail: uploadProgressFromFile(selectedFile).detail,
     });
     try {
@@ -227,15 +227,15 @@ export function useVideoWorkflow() {
       setUploadProgress({
         phase: "complete",
         percent: 100,
-        label: "Upload complete",
-        detail: `${uploadedVideo.filename} is ready for analysis.`,
+        label: "Video added",
+        detail: `${uploadedVideo.filename} is ready to review.`,
       });
     } catch (caught) {
       captureError(caught, "upload");
       setUploadProgress({
         phase: "failed",
         percent: null,
-        label: "Upload needs retry",
+        label: "Video was not added",
         detail: "The video was not stored by the backend.",
       });
     } finally {
@@ -271,8 +271,8 @@ export function useVideoWorkflow() {
     if (!videoId) {
       setError({
         title: "Video required",
-        message: "Upload a video before running analysis.",
-        recovery: "Upload or load a video, then start analysis.",
+        message: "Add a video before starting a review.",
+        recovery: "Add or load a video, then start the review.",
       });
       setLastFailedOperation("analysis");
       return;
@@ -308,11 +308,11 @@ export function useVideoWorkflow() {
   const askQuestion = useCallback(
     async (question: string) => {
       if (!videoId) {
-        setError({
-          title: "Video required",
-          message: "Upload and analyze a video before asking questions.",
-          recovery: "Analyze a video, then ask again.",
-        });
+      setError({
+        title: "Video required",
+        message: "Finish a review before asking questions.",
+        recovery: "Start the review, then ask again.",
+      });
         setLastFailedOperation("question");
         return;
       }
@@ -414,13 +414,13 @@ export function useVideoWorkflow() {
       return null;
     }
     if (lastFailedOperation === "upload") {
-      return "Retry upload";
+      return "Try again";
     }
     if (lastFailedOperation === "analysis") {
-      return "Retry analysis";
+      return "Try review again";
     }
     if (lastFailedOperation === "timeline") {
-      return "Reload timeline";
+      return "Reload notes";
     }
     if (lastFailedOperation === "question" && lastQuestion) {
       return "Ask again";

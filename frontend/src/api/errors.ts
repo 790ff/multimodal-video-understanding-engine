@@ -50,56 +50,56 @@ export function toUserFacingError(error: unknown): UserFacingError {
     if (error.code === "unsupported_video_type") {
       return {
         title: "Unsupported file",
-        message: "Use an MP4 or MOV video for this local MVP.",
-        recovery: "Choose a supported video file and upload again.",
+        message: "Use an MP4 or MOV video.",
+        recovery: "Choose a supported video and try again.",
       };
     }
     if (error.code === "upload_too_large" || error.code === "file_too_large") {
       return {
         title: "Video is too large",
         message: "Use a shorter video or raise the local upload limit before trying again.",
-        recovery: "Select a smaller MP4 or MOV file and retry upload.",
+        recovery: "Select a smaller MP4 or MOV file and try again.",
       };
     }
     if (error.code === "video_not_analyzed") {
       return {
-        title: "Not analyzed yet",
-        message: "Run analysis before opening the timeline or asking questions.",
-        recovery: "Start analysis for this video, then retry the action.",
+        title: "Review not ready",
+        message: "Finish the review before opening notes or asking questions.",
+        recovery: "Start the review for this video, then try again.",
       };
     }
     if (error.code === "video_already_processing") {
       return {
-        title: "Analysis in progress",
-        message: "This video is already being analyzed. Keep this page open and refresh status.",
-        recovery: "Wait for the processing status to finish, then refresh.",
+        title: "Review in progress",
+        message: "This video is already being reviewed.",
+        recovery: "Wait for the review to finish, then refresh.",
       };
     }
     if (CONFIG_FAILURE_CODES.has(error.code)) {
       return {
         title: "Provider configuration needed",
         message: "Set the required provider key or model configuration in the local environment.",
-        recovery: "Update the local environment, restart the backend, and retry analysis.",
+        recovery: "Update the local environment, restart the backend, and try the review again.",
       };
     }
     if (FFMPEG_FAILURE_CODES.has(error.code)) {
       return {
         title: "FFmpeg needs attention",
         message: "The backend could not process the video media with the local video tools.",
-        recovery: "Install FFmpeg or confirm it is available on PATH, then retry analysis.",
+        recovery: "Install FFmpeg or confirm it is available on PATH, then try the review again.",
       };
     }
     if (ANALYSIS_FAILURE_CODES.has(error.code) || error.status >= 500) {
       return {
-        title: "Analysis failed",
-        message: "The backend marked analysis as failed without exposing internal details.",
-        recovery: "Check provider keys, FFmpeg, and the source video, then retry analysis.",
+        title: "Review failed",
+        message: "The review stopped without exposing internal details.",
+        recovery: "Check provider keys, FFmpeg, and the source video, then try again.",
       };
     }
     if (error.code === "empty_question") {
       return {
         title: "Question required",
-        message: "Enter a question before asking the video.",
+        message: "Enter a question before sending.",
         recovery: "Type a question and submit it again.",
       };
     }
@@ -128,8 +128,8 @@ export function toUserFacingError(error: unknown): UserFacingError {
 
 export function analysisFailedStatusError(): UserFacingError {
   return {
-    title: "Analysis failed",
-    message: "Analysis stopped before the timeline could be built.",
-    recovery: "Check provider configuration, FFmpeg, and the source video, then retry analysis.",
+    title: "Review failed",
+    message: "The review stopped before notes were ready.",
+    recovery: "Check provider configuration, FFmpeg, and the source video, then try again.",
   };
 }
