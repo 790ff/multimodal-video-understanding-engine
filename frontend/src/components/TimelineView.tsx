@@ -2,6 +2,7 @@ import { Clock3, ListVideo, Loader2, RefreshCw } from "lucide-react";
 
 import type { TimelineResponse } from "../api/types";
 import { formatRange } from "../utils/time";
+import type { WorkflowStage } from "../utils/workflowStage";
 import { EmptyState } from "./EmptyState";
 import { EvidenceList } from "./EvidenceList";
 
@@ -9,12 +10,19 @@ type TimelineViewProps = {
   timeline: TimelineResponse | null;
   loading: boolean;
   analyzed: boolean;
+  stage: WorkflowStage;
   onReload: () => void;
 };
 
-export function TimelineView({ timeline, loading, analyzed, onReload }: TimelineViewProps) {
+export function TimelineView({ timeline, loading, analyzed, stage, onReload }: TimelineViewProps) {
+  const locked = !analyzed && !loading;
+
   return (
-    <section className="timeline-section" aria-labelledby="timeline-title" aria-busy={loading}>
+    <section
+      className={`timeline-section${locked ? " timeline-section--locked" : ""}`}
+      aria-labelledby="timeline-title"
+      aria-busy={loading}
+    >
       <div className="section-heading">
         <div>
           <span className="eyebrow">Evidence</span>
@@ -26,7 +34,11 @@ export function TimelineView({ timeline, loading, analyzed, onReload }: Timeline
       {loading ? (
         <EmptyState icon={Loader2} title="Loading timeline" message="Fetching stored events." />
       ) : !analyzed ? (
-        <EmptyState icon={ListVideo} title="Not analyzed yet" message="Timeline appears after analysis." />
+        <EmptyState
+          icon={stage === "processing" ? Loader2 : ListVideo}
+          title={timelineEmptyTitle(stage)}
+          message={timelineEmptyMessage(stage)}
+        />
       ) : !timeline || timeline.events.length === 0 ? (
         <EmptyState
           icon={ListVideo}
@@ -52,4 +64,30 @@ export function TimelineView({ timeline, loading, analyzed, onReload }: Timeline
       )}
     </section>
   );
+}
+
+function timelineEmptyTitle(stage: WorkflowStage) {
+  if (stage === "uploaded") {
+    return "Ready for analysis";
+  }
+  if (stage === "processing") {
+    return "Building timeline";
+  }
+  if (stage === "failed") {
+    return "Timeline unavailable";
+  }
+  return "No timeline yet";
+}
+
+function timelineEmptyMessage(stage: WorkflowStage) {
+  if (stage === "uploaded") {
+    return "Timeline events will appear after analysis completes.";
+  }
+  if (stage === "processing") {
+    return "Events will appear here when processing finishes.";
+  }
+  if (stage === "failed") {
+    return "Retry analysis to generate timestamped evidence.";
+  }
+  return "Upload a video to create timestamped evidence.";
 }

@@ -14,6 +14,7 @@ type AskPanelProps = {
 
 export function AskPanel({ answer, disabled, asking, onAsk }: AskPanelProps) {
   const [question, setQuestion] = useState("");
+  const showForm = !disabled || Boolean(answer);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -30,27 +31,29 @@ export function AskPanel({ answer, disabled, asking, onAsk }: AskPanelProps) {
         <MessageCircleQuestion size={22} aria-hidden="true" />
       </div>
 
-      <form className="ask-form" onSubmit={handleSubmit}>
-        <label className="field-label" htmlFor="video-question">
-          Question
-        </label>
-        <textarea
-          id="video-question"
-          value={question}
-          onChange={(event) => setQuestion(event.target.value)}
-          placeholder="What happened at the start?"
-          rows={4}
-          disabled={disabled || asking}
-        />
-        <button
-          type="submit"
-          className="primary-button"
-          disabled={disabled || asking || question.trim().length === 0}
-        >
-          <Send size={17} aria-hidden="true" />
-          {asking ? "Asking" : "Ask"}
-        </button>
-      </form>
+      {showForm ? (
+        <form className="ask-form" onSubmit={handleSubmit}>
+          <label className="field-label" htmlFor="video-question">
+            Question
+          </label>
+          <textarea
+            id="video-question"
+            value={question}
+            onChange={(event) => setQuestion(event.target.value)}
+            placeholder="What happened at the start?"
+            rows={4}
+            disabled={disabled || asking}
+          />
+          <button
+            type="submit"
+            className="primary-button"
+            disabled={disabled || asking || question.trim().length === 0}
+          >
+            <Send size={17} aria-hidden="true" />
+            {asking ? "Asking" : "Ask"}
+          </button>
+        </form>
+      ) : null}
 
       {answer ? (
         <div className="answer-block">
@@ -61,7 +64,7 @@ export function AskPanel({ answer, disabled, asking, onAsk }: AskPanelProps) {
       ) : (
         <EmptyState
           icon={MessageCircleQuestion}
-          title="No answer yet"
+          title={disabled ? "Questions locked" : "No answer yet"}
           message={disabled ? "Analyze a video before asking." : "Ask a question about this video."}
         />
       )}

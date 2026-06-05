@@ -19,6 +19,10 @@ export function UploadPanel({
   onSelectFile,
   onUpload,
 }: UploadPanelProps) {
+  const uploaded = progress.phase === "complete";
+  const uploadDisabled = !selectedFile || uploading || uploaded;
+  const uploadButtonClass = uploaded ? "secondary-button upload-button" : "primary-button upload-button";
+
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     onSelectFile(event.target.files?.[0] ?? null);
   }
@@ -51,12 +55,12 @@ export function UploadPanel({
       />
       <button
         type="button"
-        className="primary-button"
+        className={uploadButtonClass}
         onClick={onUpload}
-        disabled={!selectedFile || uploading}
+        disabled={uploadDisabled}
       >
         <UploadCloud size={17} aria-hidden="true" />
-        {uploading ? "Uploading" : progress.phase === "failed" ? "Retry upload" : "Upload"}
+        {uploading ? "Uploading" : uploaded ? "Uploaded" : progress.phase === "failed" ? "Retry upload" : "Upload"}
       </button>
     </section>
   );

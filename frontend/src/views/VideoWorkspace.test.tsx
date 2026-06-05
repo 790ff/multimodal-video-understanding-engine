@@ -94,6 +94,19 @@ describe("VideoWorkspace", () => {
     window.localStorage.clear();
   });
 
+  it("starts with one clear upload action and keeps locked tools quiet", () => {
+    render(<VideoWorkspace />);
+
+    expect(screen.getByText("No video loaded")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Add a video" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^upload$/i })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /^analyze$/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Question")).not.toBeInTheDocument();
+    expect(screen.getByText("Questions locked")).toBeInTheDocument();
+    expect(screen.getByText("Advanced details")).toBeInTheDocument();
+    expect(screen.getByText("http://127.0.0.1:8000")).not.toBeVisible();
+  });
+
   it("covers upload, analyze, timeline, and ask state transitions", async () => {
     render(<VideoWorkspace />);
 
@@ -101,7 +114,10 @@ describe("VideoWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: /^upload$/i }));
 
     expect(await screen.findByText("Upload complete")).toBeInTheDocument();
-    expect(screen.getByText("Ready for analysis")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Start analysis" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^uploaded$/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^analyze$/i })).toBeEnabled();
+    expect(screen.queryByLabelText("Question")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /^analyze$/i }));
 
