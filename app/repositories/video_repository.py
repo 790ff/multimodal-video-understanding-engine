@@ -25,6 +25,10 @@ class VideoRepository:
     def get(self, video_id: str) -> Optional[VideoModel]:
         return self.session.get(VideoModel, video_id)
 
+    def list_video_ids(self) -> list[str]:
+        statement = select(VideoModel.id).order_by(VideoModel.created_at)
+        return list(self.session.scalars(statement))
+
     def create(
         self,
         *,
@@ -58,6 +62,11 @@ class VideoRepository:
         video.keyframes.clear()
         video.scenes.clear()
         video.timeline_events.clear()
+        self.session.flush()
+
+    def clear_all_metadata(self) -> None:
+        for video in list(self.session.scalars(select(VideoModel))):
+            self.session.delete(video)
         self.session.flush()
 
     def clear_analysis_outputs(self, video: VideoModel) -> None:

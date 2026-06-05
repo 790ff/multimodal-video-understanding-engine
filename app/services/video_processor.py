@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -20,6 +19,7 @@ from app.domain.errors import AppError, ConflictAppError, NotFoundAppError, Proc
 from app.domain.status import VideoStatus
 from app.repositories.video_repository import VideoRepository
 from app.services.processing_lifecycle import STAGE_ERROR_CODES, AnalysisJob, ProcessingStage
+from app.services.storage_lifecycle import RuntimeStorageLifecycle
 from app.services.storage_paths import controlled_child_path, ensure_path_within
 from app.services.timeline_builder import TimelineBuilder
 
@@ -46,9 +46,11 @@ class VideoProcessor:
         transcriber: Optional[Transcriber | GeminiTranscriber | FallbackTranscriber] = None,
         frame_analyzer: Optional[FrameAnalyzer | GeminiFrameAnalyzer] = None,
         timeline_builder: Optional[TimelineBuilder] = None,
+        storage_lifecycle: Optional[RuntimeStorageLifecycle] = None,
         settings: Optional[Settings] = None,
     ) -> None:
         self.settings = settings or get_settings()
+        self.storage_lifecycle = storage_lifecycle or RuntimeStorageLifecycle(self.settings)
         self.audio_extractor = audio_extractor or AudioExtractor(settings=self.settings)
         self.frame_extractor = frame_extractor or FrameExtractor()
         self.scene_detector = scene_detector or SceneDetector()
@@ -206,11 +208,23 @@ class VideoProcessor:
         )
 
     def _ensure_output_dirs(self, *, audio_path: Path, frame_dir: Path) -> None:
-        audio_path.parent.mkdir(parents=True, exist_ok=True)
-        frame_dir.mkdir(parents=True, exist_ok=True)
+        self.storage_lifecycle.ensure_parent_directory(
+            audio_path,
+            root=self.settings.audio_dir,
+            code="unsafe_audio_path",
+        )
+        ensure_path_within(
+            self.settings.frame_dir,
+            frame_dir,
+            code="unsafe_frame_path",
+        ).mkdir(parents=True, exist_ok=True)
 
     def _ensure_audio(self, *, video_path: Path, audio_path: Path) -> None:
-        if self._is_nonempty_file(audio_path):
+        if self.storage_lifecycle.is_nonempty_file(
+            audio_path,
+            root=self.settings.audio_dir,
+            code="unsafe_audio_path",
+        ):
             return
         self.audio_extractor.extract(video_path=video_path, output_path=audio_path)
 
@@ -223,13 +237,14 @@ class VideoProcessor:
         existing_keyframes = repository.list_keyframes(video)
         if not existing_keyframes:
             return []
-        if all(self._is_nonempty_file(Path(keyframe.path)) for keyframe in existing_keyframes):
+        if all(self._is_reusable_keyframe_path(keyframe.path) for keyframe in existing_keyframes):
             return [
                 ExtractedFrame(time=keyframe.time, path=Path(keyframe.path))
                 for keyframe in existing_keyframes
             ]
 
         repository.replace_keyframes(video, [])
+        self._commit_processing_checkpoint(repository)
         return []
 
     def _extract_keyframes(
@@ -240,11 +255,14 @@ class VideoProcessor:
         frame_dir: Path,
         repository: VideoRepository,
     ) -> list[ExtractedFrame]:
-        shutil.rmtree(frame_dir, ignore_errors=True)
-        frame_dir.mkdir(parents=True, exist_ok=True)
+        safe_frame_dir = self.storage_lifecycle.prepare_clean_directory(
+            frame_dir,
+            root=self.settings.frame_dir,
+            code="unsafe_frame_path",
+        )
         keyframes = self.frame_extractor.extract(
             video_path=video_path,
-            output_dir=frame_dir,
+            output_dir=safe_frame_dir,
             sample_seconds=self.settings.frame_sample_seconds,
         )
         repository.replace_keyframes(
@@ -312,8 +330,15 @@ class VideoProcessor:
                 code="frame_summary_storage_failed",
             )
 
-    def _is_nonempty_file(self, path: Path) -> bool:
-        return path.is_file() and path.stat().st_size > 0
+    def _is_reusable_keyframe_path(self, path: str) -> bool:
+        try:
+            return self.storage_lifecycle.is_nonempty_file(
+                Path(path),
+                root=self.settings.frame_dir,
+                code="unsafe_frame_path",
+            )
+        except AppError:
+            return False
 
     def _detect_scenes_with_fallback(
         self,
@@ -361,9 +386,17 @@ class VideoProcessor:
 
     def _cleanup_failed_job(self, job: AnalysisJob) -> None:
         if job.stage == ProcessingStage.AUDIO_EXTRACTION:
-            job.audio_path.unlink(missing_ok=True)
+            self.storage_lifecycle.remove_runtime_path(
+                job.audio_path,
+                root=self.settings.audio_dir,
+                code="unsafe_audio_path",
+            )
         elif job.stage == ProcessingStage.FRAME_EXTRACTION:
-            shutil.rmtree(job.frame_dir, ignore_errors=True)
+            self.storage_lifecycle.remove_runtime_path(
+                job.frame_dir,
+                root=self.settings.frame_dir,
+                code="unsafe_frame_path",
+            )
 
     def _safe_processing_code(self, exc: Exception, *, stage: ProcessingStage) -> str:
         if isinstance(exc, AppError):
