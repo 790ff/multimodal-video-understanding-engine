@@ -1,3 +1,5 @@
+import { motion } from "motion/react";
+
 type ProgressMeterProps = {
   label: string;
   detail?: string;
@@ -13,6 +15,7 @@ export function ProgressMeter({
 }: ProgressMeterProps) {
   const clampedValue =
     value === null ? null : Math.min(100, Math.max(0, Math.round(value)));
+  const indeterminate = clampedValue === null && tone === "active";
 
   return (
     <div className={`progress-meter progress-meter--${tone}`} aria-live="polite">
@@ -28,9 +31,11 @@ export function ProgressMeter({
         aria-valuemax={100}
         aria-valuenow={clampedValue ?? undefined}
       >
-        <span
-          className={clampedValue === null ? "progress-meter__bar is-indeterminate" : "progress-meter__bar"}
-          style={clampedValue === null ? undefined : { width: `${clampedValue}%` }}
+        <motion.span
+          className={indeterminate ? "progress-meter__bar is-indeterminate" : "progress-meter__bar"}
+          initial={false}
+          animate={clampedValue === null ? undefined : { width: `${clampedValue}%` }}
+          transition={{ duration: 0.22, ease: "easeOut" }}
         />
       </div>
       {detail ? <p>{detail}</p> : null}

@@ -29,7 +29,7 @@ export type AnalysisProgressState = {
 export const idleUploadProgress: UploadProgressState = {
   phase: "idle",
   percent: null,
-  label: "No video yet",
+  label: "No clip yet",
   detail: "Choose an MP4 or MOV.",
 };
 
@@ -51,7 +51,7 @@ export function uploadProgressFromEvent(
   return {
     phase: "uploading",
     percent: progress.percent,
-    label: progress.percent === null ? "Adding video" : `Adding ${progress.percent}%`,
+    label: progress.percent === null ? "Adding clip" : `Adding ${progress.percent}%`,
     detail: `${uploaded} of ${total}`,
   };
 }
@@ -73,12 +73,12 @@ export function buildAnalysisProgress({
     return {
       phase: "idle",
       percent: 0,
-      label: "Waiting for video",
-      detail: "Add a video to start a review.",
+      label: "Waiting for clip",
+      detail: "Add a clip to start a review.",
       steps: [
-        { id: "upload", label: "Video", status: "pending" },
+        { id: "upload", label: "Clip", status: "pending" },
         { id: "analysis", label: "Review", status: "pending" },
-        { id: "timeline", label: "Ready", status: "pending" },
+        { id: "timeline", label: "Board", status: "pending" },
       ],
     };
   }
@@ -90,9 +90,9 @@ export function buildAnalysisProgress({
       label: "Review stopped",
       detail: "Try again after checking setup.",
       steps: [
-        { id: "upload", label: "Video", status: "complete" },
+        { id: "upload", label: "Clip", status: "complete" },
         { id: "analysis", label: "Review", status: "failed" },
-        { id: "timeline", label: "Ready", status: "pending" },
+        { id: "timeline", label: "Board", status: "pending" },
       ],
     };
   }
@@ -101,14 +101,14 @@ export function buildAnalysisProgress({
     return {
       phase: hasTimeline ? "complete" : "timeline",
       percent: hasTimeline ? 100 : null,
-      label: hasTimeline ? "Review ready" : "Loading notes",
-      detail: hasTimeline ? "Notes and questions are ready." : "Getting saved moments.",
+      label: hasTimeline ? "Board ready" : "Loading board",
+      detail: hasTimeline ? "Moments and questions are live." : "Getting saved moments.",
       steps: [
-        { id: "upload", label: "Video", status: "complete" },
+        { id: "upload", label: "Clip", status: "complete" },
         { id: "analysis", label: "Review", status: "complete" },
         {
           id: "timeline",
-          label: "Ready",
+          label: "Board",
           status: hasTimeline ? "complete" : loadingTimeline ? "active" : "pending",
         },
       ],
@@ -119,12 +119,12 @@ export function buildAnalysisProgress({
     return {
       phase: "processing",
       percent: null,
-      label: "Reviewing video",
+      label: "Building deck",
       detail: "This can take a moment for longer clips.",
       steps: [
-        { id: "upload", label: "Video", status: "complete" },
+        { id: "upload", label: "Clip", status: "complete" },
         { id: "analysis", label: "Review", status: "active" },
-        { id: "timeline", label: "Ready", status: "pending" },
+        { id: "timeline", label: "Board", status: "pending" },
       ],
     };
   }
@@ -132,12 +132,12 @@ export function buildAnalysisProgress({
   return {
     phase: "ready",
     percent: 34,
-    label: "Ready to review",
-    detail: "Start the review when you are ready.",
+    label: "Deck armed",
+    detail: "Start review when the clip is ready.",
     steps: [
-      { id: "upload", label: "Video", status: "complete" },
+      { id: "upload", label: "Clip", status: "complete" },
       { id: "analysis", label: "Review", status: "active" },
-      { id: "timeline", label: "Ready", status: "pending" },
+      { id: "timeline", label: "Board", status: "pending" },
     ],
   };
 }

@@ -1,4 +1,6 @@
-import { BookOpenText, Clock3, ListVideo, Loader2, RefreshCw } from "lucide-react";
+import { BookOpenText, Clock3, ListVideo, Loader2, RefreshCw, Target } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { TimelineResponse } from "../api/types";
 import { formatRange } from "../utils/time";
@@ -16,17 +18,25 @@ type TimelineViewProps = {
 
 export function TimelineView({ timeline, loading, analyzed, stage, onReload }: TimelineViewProps) {
   const locked = !analyzed && !loading;
+  const events = useMemo(() => timeline?.events ?? [], [timeline]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const activeEvent = events[activeIndex] ?? events[0] ?? null;
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [events.length]);
 
   return (
-    <section
+    <motion.section
       className={`timeline-section${locked ? " timeline-section--locked" : ""}`}
       aria-labelledby="timeline-title"
       aria-busy={loading}
+      layout
     >
       <div className="section-heading">
         <div>
-          <span className="eyebrow">Notes</span>
-          <h2 id="timeline-title">Review notes</h2>
+          <span className="eyebrow">Moment board</span>
+          <h2 id="timeline-title">Review board</h2>
         </div>
         {loading ? <Loader2 size={20} aria-hidden="true" className="spin" /> : <BookOpenText size={20} />}
       </div>
@@ -50,59 +60,86 @@ export function TimelineView({ timeline, loading, analyzed, stage, onReload }: T
           onAction={onReload}
         />
       ) : (
-        <div className="review-notes">
-          <section className="quick-note" aria-labelledby="quick-note-title">
-            <span className="eyebrow">Quick read</span>
-            <h3 id="quick-note-title">First thing to know</h3>
-            <p>{timeline.events[0].summary}</p>
+        <div className="moment-board">
+          <section className="moment-stage" aria-live="polite">
+            <div className="moment-stage__top">
+              <span className="event-kicker">Moment {activeIndex + 1}</span>
+              <span className="event-time">
+                <Clock3 size={15} aria-hidden="true" />
+                {activeEvent ? formatRange(activeEvent.start_time, activeEvent.end_time) : "--"}
+              </span>
+            </div>
+            <AnimatePresence mode="wait">
+              {activeEvent ? (
+                <motion.div
+                  key={`${activeEvent.start_time}-${activeEvent.end_time}-${activeIndex}`}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.22 }}
+                >
+                  <h3>{activeEvent.summary}</h3>
+                  <EvidenceList evidence={activeEvent.evidence} />
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
           </section>
 
           <ol className="timeline-list" aria-label="Key moments">
-            {timeline.events.map((event, index) => (
-              <li key={`${event.start_time}-${event.end_time}-${index}`} className="timeline-event">
-                <div className="event-time">
-                  <Clock3 size={15} aria-hidden="true" />
-                  {formatRange(event.start_time, event.end_time)}
-                </div>
-                <div className="event-body">
-                  <span className="event-kicker">Moment {index + 1}</span>
-                  <p>{event.summary}</p>
-                  <details className="source-details">
-                    <summary>Show sources</summary>
-                    <EvidenceList evidence={event.evidence} />
-                  </details>
-                </div>
-              </li>
-            ))}
+            {events.map((event, index) => {
+              const active = index === activeIndex;
+              return (
+                <li key={`${event.start_time}-${event.end_time}-${index}`}>
+                  <button
+                    type="button"
+                    className={`timeline-event${active ? " timeline-event--active" : ""}`}
+                    onClick={() => setActiveIndex(index)}
+                    aria-pressed={active}
+                  >
+                    <span className="timeline-event__marker" aria-hidden="true">
+                      {active ? <Target size={14} /> : index + 1}
+                    </span>
+                    <span className="event-body">
+                      <span className="event-kicker">Moment {index + 1}</span>
+                      <span>{event.summary}</span>
+                    </span>
+                    <span className="event-time">
+                      <Clock3 size={14} aria-hidden="true" />
+                      {formatRange(event.start_time, event.end_time)}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
           </ol>
         </div>
       )}
-    </section>
+    </motion.section>
   );
 }
 
 function timelineEmptyTitle(stage: WorkflowStage) {
   if (stage === "uploaded") {
-    return "Ready to review";
+    return "Deck armed";
   }
   if (stage === "processing") {
-    return "Writing notes";
+    return "Writing board";
   }
   if (stage === "failed") {
-    return "Notes unavailable";
+    return "Board stalled";
   }
-  return "No video yet";
+  return "No clip yet";
 }
 
 function timelineEmptyMessage(stage: WorkflowStage) {
   if (stage === "uploaded") {
-    return "Start the review to see the important moments.";
+    return "Start review to unlock moments and sources.";
   }
   if (stage === "processing") {
-    return "The notes will appear here when the review finishes.";
+    return "Moments will land here when the review finishes.";
   }
   if (stage === "failed") {
-    return "Try the review again from the progress panel.";
+    return "Retry the deck from the review engine.";
   }
-  return "Add a video to create review notes.";
+  return "Add a clip to build the review board.";
 }

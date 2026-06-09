@@ -50,14 +50,14 @@ export function toUserFacingError(error: unknown): UserFacingError {
     if (error.code === "unsupported_video_type") {
       return {
         title: "Unsupported file",
-        message: "Use an MP4 or MOV video.",
-        recovery: "Choose a supported video and try again.",
+        message: "Use an MP4 or MOV clip.",
+        recovery: "Choose a supported clip and try again.",
       };
     }
     if (error.code === "upload_too_large" || error.code === "file_too_large") {
       return {
-        title: "Video is too large",
-        message: "Use a shorter video or raise the local upload limit before trying again.",
+        title: "Clip is too large",
+        message: "Use a shorter clip or raise the local upload limit before trying again.",
         recovery: "Select a smaller MP4 or MOV file and try again.",
       };
     }
@@ -65,13 +65,13 @@ export function toUserFacingError(error: unknown): UserFacingError {
       return {
         title: "Review not ready",
         message: "Finish the review before opening notes or asking questions.",
-        recovery: "Start the review for this video, then try again.",
+        recovery: "Start the review for this clip, then try again.",
       };
     }
     if (error.code === "video_already_processing") {
       return {
         title: "Review in progress",
-        message: "This video is already being reviewed.",
+        message: "This clip is already being reviewed.",
         recovery: "Wait for the review to finish, then refresh.",
       };
     }
@@ -85,7 +85,7 @@ export function toUserFacingError(error: unknown): UserFacingError {
     if (FFMPEG_FAILURE_CODES.has(error.code)) {
       return {
         title: "FFmpeg needs attention",
-        message: "The backend could not process the video media with the local video tools.",
+        message: "The backend could not process the clip with the local media tools.",
         recovery: "Install FFmpeg or confirm it is available on PATH, then try the review again.",
       };
     }
@@ -93,7 +93,7 @@ export function toUserFacingError(error: unknown): UserFacingError {
       return {
         title: "Review failed",
         message: "The review stopped without exposing internal details.",
-        recovery: "Check provider keys, FFmpeg, and the source video, then try again.",
+        recovery: "Check provider keys, FFmpeg, and the source clip, then try again.",
       };
     }
     if (error.code === "empty_question") {
@@ -105,9 +105,9 @@ export function toUserFacingError(error: unknown): UserFacingError {
     }
     if (error.code === "video_not_found") {
       return {
-        title: "Video not found",
+        title: "Clip not found",
         message: "The selected video record is not available in the local backend.",
-        recovery: "Load a different video ID or upload the video again.",
+        recovery: "Load a different video ID or upload the clip again.",
       };
     }
     if (error.code === "request_aborted") {
@@ -122,7 +122,7 @@ export function toUserFacingError(error: unknown): UserFacingError {
   return {
     title: "Request failed",
     message: "The operation could not be completed. Try again after checking the local app state.",
-    recovery: "Retry the action or refresh the current video status.",
+    recovery: "Retry the action or refresh the current clip status.",
   };
 }
 
@@ -130,6 +130,6 @@ export function analysisFailedStatusError(): UserFacingError {
   return {
     title: "Review failed",
     message: "The review stopped before notes were ready.",
-    recovery: "Check provider configuration, FFmpeg, and the source video, then try again.",
+    recovery: "Check provider configuration, FFmpeg, and the source clip, then try again.",
   };
 }

@@ -15,7 +15,7 @@ const labels: Record<VideoStatusValue, string> = {
 
 export function StatusBadge({ status }: StatusBadgeProps) {
   if (!status) {
-    return <span className="status-badge status-badge--empty">No video</span>;
+    return <span className="status-badge status-badge--empty">No clip</span>;
   }
 
   const Icon =

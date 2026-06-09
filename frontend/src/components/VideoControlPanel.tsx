@@ -1,4 +1,5 @@
 import { ListChecks, Play, RotateCcw } from "lucide-react";
+import { motion } from "motion/react";
 
 import type { AnalyzeVideoResponse, VideoStatusResponse } from "../api/types";
 import type { WorkflowStage } from "../utils/workflowStage";
@@ -31,17 +32,19 @@ export function VideoControlPanel({
 }: VideoControlPanelProps) {
   const showAnalyzeAction = stage === "uploaded" || stage === "processing" || stage === "failed";
   const analyzeLabel =
-    stage === "processing" ? "Reviewing" : stage === "failed" ? "Try review again" : "Start review";
+    stage === "processing" ? "Building" : stage === "failed" ? "Retry deck" : "Start review";
 
   return (
-    <section
+    <motion.section
       className={`tool-panel control-panel control-panel--${stage}`}
       aria-labelledby="status-title"
       aria-busy={analyzing}
+      whileHover={{ y: -1 }}
+      transition={{ duration: 0.18 }}
     >
       <div className="panel-heading">
         <div>
-          <span className="eyebrow">Progress</span>
+          <span className="eyebrow">Review engine</span>
           <h2 id="status-title">{stageTitle(stage)}</h2>
         </div>
         <StatusBadge status={status?.status} />
@@ -84,15 +87,16 @@ export function VideoControlPanel({
 
       <div className="button-row">
         {showAnalyzeAction ? (
-          <button
+          <motion.button
             type="button"
             className="primary-button"
             onClick={onAnalyze}
             disabled={!canAnalyze}
+            whileTap={canAnalyze ? { x: 2, y: 2 } : undefined}
           >
             <Play size={17} aria-hidden="true" />
             {analyzeLabel}
-          </button>
+          </motion.button>
         ) : null}
         {hasVideo ? (
           <button type="button" className="secondary-button" onClick={onReset}>
@@ -108,40 +112,40 @@ export function VideoControlPanel({
           Review stopped before notes were ready. Check setup, then try again.
         </p>
       ) : null}
-    </section>
+    </motion.section>
   );
 }
 
 function stageTitle(stage: WorkflowStage) {
   if (stage === "uploaded") {
-    return "Start review";
+    return "Deck ready";
   }
   if (stage === "processing") {
-    return "Reviewing";
+    return "Building deck";
   }
   if (stage === "analyzed") {
-    return "Ready";
+    return "Review live";
   }
   if (stage === "failed") {
-    return "Try again";
+    return "Deck stalled";
   }
-  return "Choose a video";
+  return "No clip loaded";
 }
 
 function stageDetail(stage: WorkflowStage) {
   if (stage === "uploaded") {
-    return "The video is ready. Start the review to create notes.";
+    return "The clip is parked. Start the review to generate the board.";
   }
   if (stage === "processing") {
-    return "Keep this page open while the review finishes.";
+    return "The deck is filling with moments, sources, and notes.";
   }
   if (stage === "analyzed") {
-    return "Your notes are ready in the review area.";
+    return "Moments and questions are unlocked.";
   }
   if (stage === "failed") {
-    return "The review did not finish.";
+    return "The last run stopped before the board was ready.";
   }
-  return "Start by adding a short MP4 or MOV.";
+  return "Drop a short MP4 or MOV into the source slot.";
 }
 
 function analysisProgressTone(phase: AnalysisProgressState["phase"]) {

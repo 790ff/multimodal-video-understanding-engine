@@ -52,7 +52,7 @@ describe("toUserFacingError", () => {
       }),
     );
 
-    expect(message.title).toBe("Video is too large");
+    expect(message.title).toBe("Clip is too large");
     expect(message.message).not.toContain("stack");
   });
 });

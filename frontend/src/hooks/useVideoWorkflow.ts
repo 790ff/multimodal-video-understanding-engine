@@ -173,9 +173,9 @@ export function useVideoWorkflow() {
   const uploadSelectedFile = useCallback(async () => {
     if (!selectedFile) {
       setError({
-        title: "Video required",
+        title: "Clip required",
         message: "Choose an MP4 or MOV file first.",
-        recovery: "Select a supported video and try again.",
+        recovery: "Select a supported clip and try again.",
       });
       setLastFailedOperation("upload");
       return;
@@ -201,12 +201,12 @@ export function useVideoWorkflow() {
     }
 
     setBusyFlag("uploading", true);
-    setUploadProgress({
-      phase: "uploading",
-      percent: 0,
-      label: "Adding video",
-      detail: uploadProgressFromFile(selectedFile).detail,
-    });
+      setUploadProgress({
+        phase: "uploading",
+        percent: 0,
+        label: "Adding clip",
+        detail: uploadProgressFromFile(selectedFile).detail,
+      });
     try {
       const uploadedVideo = await videoApi.upload(selectedFile, {
         onProgress: (progress) => {
@@ -227,16 +227,16 @@ export function useVideoWorkflow() {
       setUploadProgress({
         phase: "complete",
         percent: 100,
-        label: "Video added",
-        detail: `${uploadedVideo.filename} is ready to review.`,
+        label: "Clip added",
+        detail: `${uploadedVideo.filename} is ready for the deck.`,
       });
     } catch (caught) {
       captureError(caught, "upload");
       setUploadProgress({
         phase: "failed",
         percent: null,
-        label: "Video was not added",
-        detail: "The video was not stored by the backend.",
+        label: "Clip was not added",
+        detail: "The clip was not stored by the backend.",
       });
     } finally {
       setBusyFlag("uploading", false);
@@ -248,7 +248,7 @@ export function useVideoWorkflow() {
       const targetVideoId = inputVideoId.trim();
       if (!targetVideoId) {
         setError({
-          title: "Video ID required",
+          title: "Clip ID required",
           message: "Enter a stored video ID to load its current status.",
           recovery: "Paste a video ID from this local backend and load it again.",
         });
@@ -270,9 +270,9 @@ export function useVideoWorkflow() {
   const analyzeVideo = useCallback(async () => {
     if (!videoId) {
       setError({
-        title: "Video required",
-        message: "Add a video before starting a review.",
-        recovery: "Add or load a video, then start the review.",
+        title: "Clip required",
+        message: "Add a clip before starting a review.",
+        recovery: "Add or load a clip, then start the review.",
       });
       setLastFailedOperation("analysis");
       return;
@@ -308,11 +308,11 @@ export function useVideoWorkflow() {
   const askQuestion = useCallback(
     async (question: string) => {
       if (!videoId) {
-      setError({
-        title: "Video required",
-        message: "Finish a review before asking questions.",
-        recovery: "Start the review, then ask again.",
-      });
+        setError({
+          title: "Review required",
+          message: "Finish a review before asking questions.",
+          recovery: "Start the review, then ask again.",
+        });
         setLastFailedOperation("question");
         return;
       }

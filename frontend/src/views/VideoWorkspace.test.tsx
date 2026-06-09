@@ -94,27 +94,37 @@ describe("VideoWorkspace", () => {
     window.localStorage.clear();
   });
 
-  it("starts with one clear add-video action and keeps locked tools quiet", () => {
+  it("starts with one clear add-video action and keeps locked tools quiet", async () => {
     render(<VideoWorkspace />);
 
-    expect(screen.getByText("No video loaded")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Choose a video" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^add video$/i })).toBeDisabled();
+    expect(screen.getAllByText("No clip loaded").length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: "No clip loaded" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^add clip$/i })).toBeDisabled();
     expect(screen.queryByRole("button", { name: /^start review$/i })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Your question")).not.toBeInTheDocument();
-    expect(screen.getByText("Questions unlock after review")).toBeInTheDocument();
-    expect(screen.getByText("Developer details")).toBeInTheDocument();
-    expect(screen.getByText("http://127.0.0.1:8000")).not.toBeVisible();
+    expect(screen.getByText("Questions locked")).toBeInTheDocument();
+    const devDrawer = screen.getByRole("button", { name: /dev drawer/i });
+    expect(devDrawer).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("http://127.0.0.1:8000")).not.toBeInTheDocument();
+
+    fireEvent.click(devDrawer);
+    await waitFor(() => {
+      expect(screen.getByText("http://127.0.0.1:8000")).toBeVisible();
+    });
+    expect(devDrawer).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(devDrawer);
+    expect(devDrawer).toHaveAttribute("aria-expanded", "false");
   });
 
   it("covers add, review, notes, and question state transitions", async () => {
     render(<VideoWorkspace />);
 
     chooseFile("clip.mp4");
-    fireEvent.click(screen.getByRole("button", { name: /^add video$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^add clip$/i }));
 
-    expect(await screen.findByRole("button", { name: /^video added$/i })).toBeDisabled();
-    expect(screen.getByRole("heading", { name: "Start review" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^clip added$/i })).toBeDisabled();
+    expect(screen.getByRole("heading", { name: "Deck ready" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^start review$/i })).toBeEnabled();
     expect(screen.queryByLabelText("Your question")).not.toBeInTheDocument();
 
@@ -123,7 +133,7 @@ describe("VideoWorkspace", () => {
     await waitFor(() => {
       expect(screen.getAllByText("Opening scene with visible narration.").length).toBeGreaterThan(0);
     });
-    expect(screen.getByText("Review ready")).toBeInTheDocument();
+    expect(screen.getByText("Board ready")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Your question"), {
       target: { value: "What happened at the start?" },
@@ -148,7 +158,7 @@ describe("VideoWorkspace", () => {
     render(<VideoWorkspace />);
 
     chooseFile("progress.mp4", "video bytes");
-    fireEvent.click(screen.getByRole("button", { name: /^add video$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^add clip$/i }));
 
     expect(await screen.findByText("Adding 50%")).toBeInTheDocument();
 
@@ -158,7 +168,7 @@ describe("VideoWorkspace", () => {
       status: "uploaded",
     });
 
-    expect(await screen.findByRole("button", { name: /^video added$/i })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: /^clip added$/i })).toBeDisabled();
   });
 
   it("keeps analysis errors actionable and retries without exposing provider details", async () => {
@@ -205,7 +215,7 @@ describe("VideoWorkspace", () => {
     render(<VideoWorkspace />);
 
     chooseFile("clip.avi");
-    fireEvent.click(screen.getByRole("button", { name: /^add video$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^add clip$/i }));
 
     expect(await screen.findByText("Unsupported file")).toBeInTheDocument();
     expect(apiMocks.upload).not.toHaveBeenCalled();
@@ -247,8 +257,8 @@ describe("VideoWorkspace", () => {
 
 async function uploadReadyVideo() {
   chooseFile("clip.mp4");
-  fireEvent.click(screen.getByRole("button", { name: /^add video$/i }));
-  await screen.findByRole("button", { name: /^video added$/i });
+  fireEvent.click(screen.getByRole("button", { name: /^add clip$/i }));
+  await screen.findByRole("button", { name: /^clip added$/i });
 }
 
 function chooseFile(filename: string, contents = "fake video") {
