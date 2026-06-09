@@ -173,9 +173,9 @@ export function useVideoWorkflow() {
   const uploadSelectedFile = useCallback(async () => {
     if (!selectedFile) {
       setError({
-        title: "Video required",
-        message: "Choose an MP4 or MOV file before uploading.",
-        recovery: "Select a supported video file and upload again.",
+        title: "Clip required",
+        message: "Choose an MP4 or MOV file first.",
+        recovery: "Select a supported clip and try again.",
       });
       setLastFailedOperation("upload");
       return;
@@ -194,19 +194,19 @@ export function useVideoWorkflow() {
       setUploadProgress({
         phase: "failed",
         percent: 0,
-        label: "Upload blocked",
+        label: "File blocked",
         detail: "Choose an MP4 or MOV file.",
       });
       return;
     }
 
     setBusyFlag("uploading", true);
-    setUploadProgress({
-      phase: "uploading",
-      percent: 0,
-      label: "Uploading video",
-      detail: uploadProgressFromFile(selectedFile).detail,
-    });
+      setUploadProgress({
+        phase: "uploading",
+        percent: 0,
+        label: "Adding clip",
+        detail: uploadProgressFromFile(selectedFile).detail,
+      });
     try {
       const uploadedVideo = await videoApi.upload(selectedFile, {
         onProgress: (progress) => {
@@ -227,16 +227,16 @@ export function useVideoWorkflow() {
       setUploadProgress({
         phase: "complete",
         percent: 100,
-        label: "Upload complete",
-        detail: `${uploadedVideo.filename} is ready for analysis.`,
+        label: "Clip added",
+        detail: `${uploadedVideo.filename} is ready for the deck.`,
       });
     } catch (caught) {
       captureError(caught, "upload");
       setUploadProgress({
         phase: "failed",
         percent: null,
-        label: "Upload needs retry",
-        detail: "The video was not stored by the backend.",
+        label: "Clip was not added",
+        detail: "The clip was not stored by the backend.",
       });
     } finally {
       setBusyFlag("uploading", false);
@@ -248,7 +248,7 @@ export function useVideoWorkflow() {
       const targetVideoId = inputVideoId.trim();
       if (!targetVideoId) {
         setError({
-          title: "Video ID required",
+          title: "Clip ID required",
           message: "Enter a stored video ID to load its current status.",
           recovery: "Paste a video ID from this local backend and load it again.",
         });
@@ -270,9 +270,9 @@ export function useVideoWorkflow() {
   const analyzeVideo = useCallback(async () => {
     if (!videoId) {
       setError({
-        title: "Video required",
-        message: "Upload a video before running analysis.",
-        recovery: "Upload or load a video, then start analysis.",
+        title: "Clip required",
+        message: "Add a clip before starting a review.",
+        recovery: "Add or load a clip, then start the review.",
       });
       setLastFailedOperation("analysis");
       return;
@@ -309,9 +309,9 @@ export function useVideoWorkflow() {
     async (question: string) => {
       if (!videoId) {
         setError({
-          title: "Video required",
-          message: "Upload and analyze a video before asking questions.",
-          recovery: "Analyze a video, then ask again.",
+          title: "Review required",
+          message: "Finish a review before asking questions.",
+          recovery: "Start the review, then ask again.",
         });
         setLastFailedOperation("question");
         return;
@@ -414,13 +414,13 @@ export function useVideoWorkflow() {
       return null;
     }
     if (lastFailedOperation === "upload") {
-      return "Retry upload";
+      return "Try again";
     }
     if (lastFailedOperation === "analysis") {
-      return "Retry analysis";
+      return "Try review again";
     }
     if (lastFailedOperation === "timeline") {
-      return "Reload timeline";
+      return "Reload notes";
     }
     if (lastFailedOperation === "question" && lastQuestion) {
       return "Ask again";

@@ -1,5 +1,7 @@
 import { FileVideo2, UploadCloud } from "lucide-react";
-import type { ChangeEvent } from "react";
+import { motion } from "motion/react";
+import type { ChangeEvent, DragEvent } from "react";
+import { useState } from "react";
 
 import type { UploadProgressState } from "../utils/workflowProgress";
 import { ProgressMeter } from "./ProgressMeter";
@@ -19,20 +21,49 @@ export function UploadPanel({
   onSelectFile,
   onUpload,
 }: UploadPanelProps) {
+  const [dragging, setDragging] = useState(false);
+  const uploaded = progress.phase === "complete";
+  const uploadDisabled = !selectedFile || uploading || uploaded;
+  const uploadButtonClass = uploaded ? "secondary-button upload-button" : "primary-button upload-button";
+
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     onSelectFile(event.target.files?.[0] ?? null);
   }
 
+  function handleDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setDragging(false);
+    onSelectFile(event.dataTransfer.files?.[0] ?? null);
+  }
+
+  function handleDrag(event: DragEvent<HTMLLabelElement>, active: boolean) {
+    event.preventDefault();
+    setDragging(active);
+  }
+
   return (
-    <section className="tool-panel upload-panel" aria-labelledby="upload-title" aria-busy={uploading}>
+    <motion.section
+      className={`tool-panel upload-panel${dragging ? " upload-panel--dragging" : ""}`}
+      aria-labelledby="upload-title"
+      aria-busy={uploading}
+      whileHover={{ y: -1 }}
+      transition={{ duration: 0.18 }}
+    >
       <div className="panel-heading">
         <div>
-          <span className="eyebrow">Input</span>
-          <h2 id="upload-title">Video upload</h2>
+          <span className="eyebrow">Source slot</span>
+          <h2 id="upload-title">Load clip</h2>
         </div>
         <FileVideo2 size={22} aria-hidden="true" />
       </div>
-      <label className="file-drop" htmlFor="video-file-input">
+      <label
+        className="file-drop"
+        htmlFor="video-file-input"
+        onDragEnter={(event) => handleDrag(event, true)}
+        onDragOver={(event) => handleDrag(event, true)}
+        onDragLeave={(event) => handleDrag(event, false)}
+        onDrop={handleDrop}
+      >
         <input
           id="video-file-input"
           type="file"
@@ -40,8 +71,13 @@ export function UploadPanel({
           aria-label="Video file"
           onChange={handleFileChange}
         />
-        <UploadCloud size={28} aria-hidden="true" />
-        <span>{selectedFile ? selectedFile.name : "Choose MP4 or MOV"}</span>
+        <span className="file-drop__icon">
+          <UploadCloud size={28} aria-hidden="true" />
+        </span>
+        <span className="file-drop__title">{selectedFile ? selectedFile.name : "Drop MP4 or MOV"}</span>
+        <span className="file-drop__meta">
+          {selectedFile ? formatBytes(selectedFile.size) : "Choose from Finder"}
+        </span>
       </label>
       <ProgressMeter
         label={progress.label}
@@ -51,14 +87,14 @@ export function UploadPanel({
       />
       <button
         type="button"
-        className="primary-button"
+        className={uploadButtonClass}
         onClick={onUpload}
-        disabled={!selectedFile || uploading}
+        disabled={uploadDisabled}
       >
         <UploadCloud size={17} aria-hidden="true" />
-        {uploading ? "Uploading" : progress.phase === "failed" ? "Retry upload" : "Upload"}
+        {uploading ? "Adding" : uploaded ? "Clip added" : progress.phase === "failed" ? "Try again" : "Add clip"}
       </button>
-    </section>
+    </motion.section>
   );
 }
 
@@ -73,4 +109,14 @@ function progressTone(phase: UploadProgressState["phase"]) {
     return "active";
   }
   return "neutral";
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

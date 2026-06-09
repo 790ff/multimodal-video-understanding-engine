@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../api/client";
@@ -94,24 +94,51 @@ describe("VideoWorkspace", () => {
     window.localStorage.clear();
   });
 
-  it("covers upload, analyze, timeline, and ask state transitions", async () => {
+  it("starts with one clear add-video action and keeps locked tools quiet", async () => {
+    render(<VideoWorkspace />);
+
+    expect(screen.getAllByText("No clip loaded").length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: "No clip loaded" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^add clip$/i })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /^start review$/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Your question")).not.toBeInTheDocument();
+    expect(screen.getByText("Questions locked")).toBeInTheDocument();
+    const devDrawer = screen.getByRole("button", { name: /dev drawer/i });
+    expect(devDrawer).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("http://127.0.0.1:8000")).not.toBeInTheDocument();
+
+    fireEvent.click(devDrawer);
+    await waitFor(() => {
+      expect(screen.getByText("http://127.0.0.1:8000")).toBeVisible();
+    });
+    expect(devDrawer).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(devDrawer);
+    expect(devDrawer).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("covers add, review, notes, and question state transitions", async () => {
     render(<VideoWorkspace />);
 
     chooseFile("clip.mp4");
-    fireEvent.click(screen.getByRole("button", { name: /^upload$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^add clip$/i }));
 
-    expect(await screen.findByText("Upload complete")).toBeInTheDocument();
-    expect(screen.getByText("Ready for analysis")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^clip added$/i })).toBeDisabled();
+    expect(screen.getByRole("heading", { name: "Deck ready" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^start review$/i })).toBeEnabled();
+    expect(screen.queryByLabelText("Your question")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /^analyze$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^start review$/i }));
 
-    expect(await screen.findByText("Opening scene with visible narration.")).toBeInTheDocument();
-    expect(screen.getByText("Analysis complete")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getAllByText("Opening scene with visible narration.").length).toBeGreaterThan(0);
+    });
+    expect(screen.getByText("Board ready")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Question"), {
+    fireEvent.change(screen.getByLabelText("Your question"), {
       target: { value: "What happened at the start?" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /^ask$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^ask question$/i }));
 
     expect(await screen.findByText("The video opens with narrated context.")).toBeInTheDocument();
     expect(apiMocks.ask).toHaveBeenCalledWith("video-1", "What happened at the start?");
@@ -131,9 +158,9 @@ describe("VideoWorkspace", () => {
     render(<VideoWorkspace />);
 
     chooseFile("progress.mp4", "video bytes");
-    fireEvent.click(screen.getByRole("button", { name: /^upload$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^add clip$/i }));
 
-    expect(await screen.findByText("Uploading 50%")).toBeInTheDocument();
+    expect(await screen.findByText("Adding 50%")).toBeInTheDocument();
 
     upload.resolve({
       video_id: "video-1",
@@ -141,7 +168,7 @@ describe("VideoWorkspace", () => {
       status: "uploaded",
     });
 
-    expect(await screen.findByText("Upload complete")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^clip added$/i })).toBeDisabled();
   });
 
   it("keeps analysis errors actionable and retries without exposing provider details", async () => {
@@ -170,15 +197,17 @@ describe("VideoWorkspace", () => {
     render(<VideoWorkspace />);
 
     await uploadReadyVideo();
-    fireEvent.click(screen.getByRole("button", { name: /^analyze$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^start review$/i }));
 
     expect(await screen.findByText("Provider configuration needed")).toBeInTheDocument();
     expect(screen.getByText(/restart the backend/i)).toBeInTheDocument();
     expect(screen.queryByText(/OPENAI_API_KEY|stack trace/)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByRole("button", { name: /retry analysis/i })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: /try review again/i })[0]);
 
-    expect(await screen.findByText("Opening scene with visible narration.")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getAllByText("Opening scene with visible narration.").length).toBeGreaterThan(0);
+    });
     expect(apiMocks.analyze).toHaveBeenCalledTimes(2);
   });
 
@@ -186,7 +215,7 @@ describe("VideoWorkspace", () => {
     render(<VideoWorkspace />);
 
     chooseFile("clip.avi");
-    fireEvent.click(screen.getByRole("button", { name: /^upload$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^add clip$/i }));
 
     expect(await screen.findByText("Unsupported file")).toBeInTheDocument();
     expect(apiMocks.upload).not.toHaveBeenCalled();
@@ -215,19 +244,21 @@ describe("VideoWorkspace", () => {
     render(<VideoWorkspace />);
 
     await uploadReadyVideo();
-    fireEvent.click(screen.getByRole("button", { name: /^analyze$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^start review$/i }));
 
     expect(await screen.findByText("Backend offline")).toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole("button", { name: /reload timeline/i })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: /reload notes/i })[0]);
 
-    expect(await screen.findByText("Recovered timeline event.")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getAllByText("Recovered timeline event.").length).toBeGreaterThan(0);
+    });
   });
 });
 
 async function uploadReadyVideo() {
   chooseFile("clip.mp4");
-  fireEvent.click(screen.getByRole("button", { name: /^upload$/i }));
-  await screen.findByText("Upload complete");
+  fireEvent.click(screen.getByRole("button", { name: /^add clip$/i }));
+  await screen.findByRole("button", { name: /^clip added$/i });
 }
 
 function chooseFile(filename: string, contents = "fake video") {

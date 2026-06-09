@@ -11,7 +11,7 @@ type EvidenceListProps = {
 
 export function EvidenceList({ evidence, compact = false }: EvidenceListProps) {
   if (evidence.length === 0) {
-    return <span className="evidence-empty">No timestamped evidence</span>;
+    return <span className="evidence-empty">No sources</span>;
   }
 
   return (
@@ -43,11 +43,24 @@ function labelForEvidence(item: TimelineEvidence): string {
   if (item.type === "frame") {
     const pathLabel = fileBasename(item.path);
     return pathLabel
-      ? `Frame ${formatSeconds(item.time)} - ${pathLabel}`
-      : `Frame ${formatSeconds(item.time)}`;
+      ? `Visual ${formatSeconds(item.time)} - ${pathLabel}`
+      : `Visual ${formatSeconds(item.time)}`;
   }
   if (item.start_time !== undefined || item.end_time !== undefined) {
-    return `${item.type} ${formatRange(item.start_time, item.end_time)}`;
+    return `${sourceLabel(item.type)} ${formatRange(item.start_time, item.end_time)}`;
   }
-  return item.type;
+  return sourceLabel(item.type);
+}
+
+function sourceLabel(type: string): string {
+  if (type === "timeline_event") {
+    return "Moment";
+  }
+  if (type === "transcript") {
+    return "Transcript";
+  }
+  if (type === "scene") {
+    return "Scene";
+  }
+  return type;
 }
